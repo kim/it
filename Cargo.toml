@@ -1,0 +1,79 @@
+[package]
+name = "it"
+version = "0.1.0"
+authors = ["Kim Altintop <kim@eagain.io>"]
+license = "GPL-2.0-only WITH openvpn-openssl-exception"
+
+edition = "2021"
+rust-version = "1.60"
+
+[features]
+default = ["vendored-libgit2"]
+vendored-libgit2 = ["git2/vendored-libgit2"]
+sha1dc = ["sha1collisiondetection"]
+
+[dependencies]
+anyhow.features = ["backtrace"]
+anyhow.version = "1"
+base64.version = "0.13"
+clap.features = ["derive", "env", "string", "wrap_help"]
+clap.version = "4.0"
+clap_complete.version = "4.0"
+clap_mangen.version = "0.2"
+console.default-features = false
+console.version = "0.15"
+directories.version = "4.0"
+either.version = "1.8"
+erased-serde.version = "0.3"
+git2.default-features = false
+git2.version = "0.15"
+globset.version = "0.4.9"
+hex.features = ["serde"]
+hex.version = "0.4"
+log.features = ["std"]
+log.version = "0.4"
+multipart.default-features = false
+multipart.features = ["client"]
+multipart.version = "0.18"
+num_cpus.version = "1.13"
+once_cell.version = "1.13"
+rand_core.features = ["getrandom"]
+rand_core.version = "0.6"
+serde.features = ["derive", "std", "rc"]
+serde.version = "1"
+serde_json.version = "1.0"
+sha2.version = "0.10"
+shlex.version = "1.1"
+signature.version = "1.6"
+ssh-encoding.version = "0.1"
+ssh-key.features = ["alloc", "ecdsa", "ed25519", "encryption", "p256", "rsa"]
+ssh-key.version = "0.5"
+tempfile.version = "3.3"
+thiserror.version = "1.0"
+threadpool.version = "1.8"
+time.features = ["serde-well-known"]
+time.version = "0.3.11"
+tiny_http.features = ["ssl-openssl"]
+tiny_http.version = "0.11"
+unicode-normalization.version = "0.1.21"
+ureq.default-features = false
+ureq.features = ["gzip", "json", "native-tls"]
+ureq.version = "2.5"
+url.features = ["serde"]
+url.version = "2.2"
+versions.features = ["serde"]
+versions.version = "4.1"
+zeroize.version = "1.5.7"
+
+#
+# Optionals
+#
+sha1collisiondetection.default-features = false
+sha1collisiondetection.optional = true
+sha1collisiondetection.version = "0.2"
+
+#
+# Platform specifics
+#
+[target.'cfg(windows)'.dependencies]
+uds_windows = "1.0"

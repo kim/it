@@ -1,0 +1,55 @@
+- UI
+    - Fetch drop bundles
+        - git (from "dumb" mirrors)
+
+    - Apply patches from foreign drops
+    - Allow building drop state from foreign drop
+
+    - Improve $EDITOR use
+        - don't launch unless isatty
+        - for metadata json, use ft=javascript and add help text
+        - re-launch when edit error
+
+    - List auto-branches
+    - More topic traversals (DFS, BFS, ..)
+
+    - Handle $PAGER, like git does?
+    - Diff/apply patch?
+    - Teardown?
+
+- Internals
+    - Cache topic subjects
+    - Open repo eagerly at outermost command layer
+
+      So we can return actual iterators from commands. Do we need a repo always,
+      though?
+
+    - Index bundle hash -> header meta
+
+      For dynamic repacking
+
+    - Upstream bindings to git_indexer_*
+
+      So that we can resolve delta bases without committing to the odb
+      immediately. This would allow to deduplicate packfile storage, and
+      partition the odb as follows:
+
+      - store the bundle pack and associated index in a directory separate from
+        the repo objects (possibly scoped by drop)
+      - add this directory as an alternate to the repo, preventing compaction
+        initiated by git
+      - strip the pack data from the bundle and replace with a pointer to the
+        pack
+      - snapshots now become compactions of this alternate objects store,
+        controlled by `it`
+      - when a snapshot is taken, dangling bundle (-headers) may either be
+        pruned, resulting in a 404 from the HTTP server when the bundle is
+        requested, or the pointer be replaced by a marker indicating that the
+        bundle was made obsolete by the corresponding snapshot bundle. The HTTP
+        server may then send a redirect to the snapshot instead.
+
+- Protocol
+    - Implement automerge topics
+
+- HTTP
+    - Accept checkpoints if authorised

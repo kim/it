@@ -1,0 +1,1373 @@
+// Copyright © 2022-2023 Kim Altintop <kim@eagain.io>
+// SPDX-License-Identifier: CC-BY-SA-4.0
+
+= it: zero-g git
+Kim Altintop <kim@eagain.io>
+:revdate: 2022
+:revnumber: 0.1.0
+:revremark: draft
+:attribute-missing: warn
+:listing-caption: Figure
+:reproducible:
+:sectanchors:
+:sectnums:
+:stylesheet: monospace.css
+:toc: preamble
+:toclevels: 3
+:xrefstyle: short
+
+_it_ aims to augment git with primitives to build integrated, cryptographically
+verifiable collaboration workflows around source code. It maintains the
+distributed property of git, not requiring a central server. _it_ is transport
+agnostic, and permits data dissemination in client-server, federated, as well as
+peer-to-peer network topologies.
+
+
+// Footnotes. Ironically at the head, due to asciidoc's evaluation order
+:fn-content-hash: pass:q,a[footnote:hash[ \
+Hashing with both the SHA-1 and SHA-256 algorithms allows internally-linked \
+data to roam between git repositories with different object formats. We hope \
+that when and if git introduces support for a new hash algorithm post SHA-256, \
+it will also have interoperability implemented. Otherwise, the burden will \
+fall on _it_ implementations. \
+]]
+:fn-peel: footnote:peel[ \
+"Peeling" is git jargon for dereferencing the natural target of a git object \
+until an object of the desired type is found. \
+]
+:fn-commit-signing: pass:q,a[footnote:commit-signing[ \
+_it_ does not prescribe whether commits or tags pertaining source code \
+histories must be cryptographically signed. Due to the non-commutativity of \
+git commits (their identity changes when reordered), it is highly dependent on \
+the development model whether author signatures are preserved in published \
+histories. Thus, we leave it to users to decide if signatures should be \
+applied at the git level, or other forms of attestation (e.g. via topic \
+entries) are employed. \
+]]
+:fn-resolve-id: footnote:resolveid[ \
+Normally, identities must be resolvable within the same tree as the drop \
+metadata. However, resolution may be substituted if e.g. the client believes \
+to have more up-to-date identity data elsewhere. \
+]
+//
+
+
+== Introduction
+
+=== Motivation
+
+The checks and balances of Free and Open Source Software (FOSS) is the ability
+for anyone to contribute to or diverge from ("`fork`") a line of development
+freely and cheaply. As FOSS is defined by the community developing it, this
+extends to all artefacts of communication and collaboration, not just the source
+code itself. In other words, an open development model is a transparent process.
+
+It is easy to see that this model necessitates _data sovereignty_: control over
+the data implies controlling participation.
+
+Traditionally, this property has been approximated by using internet email for
+collaboration. While its simplicity as a medium has its merits, email is clearly
+declining in popularity for our purpose. We attribute this to mainly two
+weaknesses: intended primarily as a free-form medium, email is lacking the
+_programmability_ of the web, impeding innovation in both tooling and services.
+Secondly, the protocol is inherently prone to abuse by permitting unsolicited
+messages, and the response measures implemented over the years have amplified
+monopolization: today, it takes significant effort and expertise to maintain a
+mail exchanger independent of large providers (let alone one which hosts a
+mailing list fanning out messages to a potentially large number of subscribers).
+
+It is not obvious, however, how an alternative could look like on a protocol
+level. Among the tradeoffs to consider is the tension between openness,
+addressability and availability -- and it highly depends on the situation which
+one has higher priority. It thus seems unlikely that it can be resolved once and
+for all. Instead, we recognise it as desirable to provide the user with choices
+of transport methods. Or, put differently, that "`the network is optional`", as
+Kleppmann et al. have called for in their essay on <<local-first,"Local-first
+software">>.
+
+Git is prototypical of the _local-first_ idea, providing data sovereignty -- for
+as long as we do not consider bidirectional collaboration: git commits do not
+commute, and so concurrent modifications do not converge, but must be explicitly
+linearised. This is not satisfying if we want to eliminate both intermediaries
+and online rendezvous. It is tempting to design a source code management and
+collaboration system from the ground up with commutativity in mind, yet git is
+so ubiquitous that we feel that we cannot forgo to present a solution which
+preserves the ability to use its existing toolchain and ecosystem. It turns out
+that, while it would be difficult to retrofit git into a proper, idealised
+_local-first_ application, it is perfectly suitable for _hosting_ such an
+application which models the collaboration process itself.
+
+
+=== Overview
+
+_it_ is essentially a collection of datatypes.
+
+We start by establishing identities (<<Identities>>), which for our purposes
+only need to certify ownership of public keys. By using an extensible,
+human-readable metadata format, we leave it to the user to bind the identity to
+external identifiers or extend it with "`profile`" information in order to
+convey a _persona_. As the metadata can be conveniently managed using git, it
+can be published easily.
+
+_it_ inherits the paradigm of most distributed version control systems, where
+changes are exchanged as small increments ("`patches`", <<Patches>>), but
+generalises the concept to include both source code changes and associated data
+such as commentary. An _it_ patch is thus similar to an email message, but
+mandates the associated data to be structured (as opposed to free-form).
+Ordering with respect to related patches is determined via git's commit graph,
+optionally allowing for sophisticated shared state objects to be constructed if
+a <<CRDT>>-based payload is used.
+
+Patches are recorded onto a log structure ("`drop`", <<Drops>>), for which we
+define a representation as a git commit history. The patch contents are,
+however, not stored directly in this structure, but redistributed verbatim. This
+is done so as to reduce data dissemination to mostly (static) file transmission,
+which opens up more choices for alternative transport protocols and minimises
+resource consumption imposed by dynamic repacking.
+
+The drop is responsible for ensuring that the dependencies (or: prerequisites)
+of a patch are satisfied before recording it, enforcing that the partial
+ordering of related patches can be recovered. Apart from that, a drop does not
+provide any ordering guarantees, which means that independent drops may converge
+even though their (commit) hashes differ.
+
+Finally, a drop is secured by a trust delegation scheme which authorises
+operations modifying its state. It also serves as a PKI, allowing verification
+of all signed objects it refers to.
+
+Networking is exemplified by a simple HTTP API (<<HTTP API>>), hinting at
+alternative protocols where appropriate. We envisage patch submission to give
+rise to gateway services, which may be elaborated on in future revisions of this
+document.
+
+
+// TODO: Related work?
+
+== Conventions and Terminology
+
+The key words "`MUST`", "`MUST NOT`", "`REQUIRED`", "`SHALL`", "`SHALL NOT`",
+"`SHOULD`", "`SHOULD NOT`", "`RECOMMENDED`", "`NOT RECOMMENDED`", "`MAY`", and
+"`OPTIONAL`" in this document are to be interpreted as described in <<RFC2119>>
+and <<RFC8174>> when, and only when, they appear in all capitals, as shown here.
+
+Familiarity with git concepts and datastructures is assumed, and terminology
+used without further explanation. Refer to the <<gitglossary>> instead.
+
+== Formats
+
+=== Signed Values
+
+Signed data items in _it_ are encoded as a subset of JSON which disallows
+floating point numbers, and requires string values and object keys to be UTF-8
+encoded. Signatures are obtained over the SHA-512 hash of the
+<<Canonical-JSON,canonical form>> of the JSON object (hashing is used to
+minimise the payload size, which may be sent to an agent process for signing).
+
+JSON values SHOULD be stored in pretty-printed form, with object keys sorted
+lexicographically.
+
+Empty optional fields SHOULD NOT be omitted from the output, but be set to
+`null` if the value is a custom type represented by a JSON string, or the
+neutral element of the JSON type otherwise.
+
+Unless otherwise noted, JSON arrays SHALL be treated as sets.
+
+Where JSON data is signed inline, it is wrapped in an object:
+
+[source,subs="+macros"]
+----
+{
+    "signed": <<OBJECT>>,
+    "signatures": {
+        <<KEYID>>: <<SIGNATURE>>,
+        ...
+    }
+}
+----
+
+[[OBJECT]]OBJECT::
+    A JSON object. Its canonical form is obtained as per <<Canonical-JSON>>.
+
+[[KEYID]]KEYID::
+    The identifier of the key signing the OBJECT, which is the SHA-256 hash of
+    the canonical form of the key, in hexadecimal.
+
+[[SIGNATURE]]SIGNATURE::
+    The hex-encoded signature of the SHA-512 hash of the canonical form of
+    OBJECT.
+
+=== Common Types
+
+[[BLOB_HASH]]BLOB_HASH::
+    Hash of the payload `p`, as if created by <<git-hash-object>>. That is, for
+    a hash algorithm `H`:
++
+[source]
+----
+H('blob ' || LEN(p) || NUL || p)
+----
+
+
+[[CONTENT_HASH]]CONTENT_HASH::
+    Dictionary of both the SHA-1 and SHA-256 <<BLOB_HASH>> of the referenced
+    object{fn-content-hash}:
++
+[source,subs="+macros"]
+----
+{
+    "sha1": <<BLOB_HASH>>,
+    "sha2": <<BLOB_HASH>>
+}
+----
+
+
+[[DATETIME]]DATETIME::
+    Date-time string in <<RFC3339>> format, e.g. "`2022-08-23T14:48:00Z`".
+
+[[OBJECT_ID]]OBJECT_ID::
+    Hexadecimal git object id.
+
+[[SPEC_VERSION]]SPEC_VERSION::
+    Version of this specification in "`dotted triple`" format, currently
+    {revnumber}. The semantics loosely follows the <<semver,"Semantic
+    Versioning">> convention, but gives no significance to leading zeroes.
+
+[[URL]]URL::
+    A URL as per the <<WHATWG-URL, WHATWG specification>>.
+
+[[VARCHAR]]VARCHAR(N)::
+    A UTF-8 encoded string of at most length `N` (in bytes).
+
+
+== Identities
+
+Like most decentralised systems, _it_ relies on public key cryptography to
+ensure authenticity of data. In order to manage and distribute public keys, _it_
+defines a <<id-metadata,simple, JSON-based format>> which can conveniently be
+stored in git.
+
+The subject of an _it_ identity is not inherently a human, it could just as well
+be a machine user such as a CI- or merge bot, or a group of users extending
+ultimate trust to each other. Consequently, it should not be assumed that
+ownership of the keys constituting the identity lies with a single actor in the
+system. It is, however, illegal to reuse keys for multiple identities within the
+same context.
+
+The context of an identity is generally a <<Drops,drop>>. Thus, a subject may
+create as many identities as they see fit (provided keys are not reused).
+Conversely, the `*custom*` attribute of an <<id-json,id.json>> document permits
+to associate an _it_ identity with external methods certifying the subject's
+_persona_, such as custodial identity providers or <<DID>> controllers (for
+example by embedding a DID document in the `*custom*` section).
+
+In general, _it_ does not specify how trust is initially established in an
+identity.
+
+Identities in _it_ are self-certifying, in that introduction or revocation of
+keys are signed by a threshold of the specified keys themselves. A threshold
+greater than one reduces the probability of identity compromise, even if a
+subset of its keys is compromised. For usability reasons, owners of personal
+identities may want to set the `threshold` to `2` and carry a certification key
+on a portable device.
+
+For practical reasons, it is RECOMMENDED for implementations to use the widely
+deployed <<OpenSSH>> suite for signing purposes, including for git commits.
+Verification of SSH-signed git commits (available since git version 2.34) MUST
+be supported. Via the <<ssh-agent>> protocol, alternative tooling is not
+precluded. All key algorithms and signature schemes supported by OpenSSH MUST be
+supported by _it_ implementations. To make it easy for users to visually match
+output from OpenSSH with <<id-json,id.json>> documents, <<KEY,keys>> are encoded
+in the format used by OpenSSH.
+
+Additional key algorithms, signature schemes or public key encodings may be
+introduced in the future.
+
+[#id-metadata]
+=== Metadata
+
+Identity information is stored in a JSON file, conventionally named `id.json`.
+The file's contents can be amended using a threshold signature scheme, and
+revisions are hash-linked to their predecessors.
+
+The `*signed*` portion of the `id.json` file is defined as follows:
+
+[source#id-json,subs="+macros"]
+----
+{
+    "_type": "eagain.io/it/identity",
+    "spec_version": <<SPEC_VERSION>>,
+    "prev": <<CONTENT_HASH>> | null,
+    "keys": [
+        <<KEY>>,
+        ...
+    ],
+    "threshold": <<THRESHOLD>>,
+    "mirrors": [
+        <<URL>>,
+        ...
+    ],
+    "expires": <<DATETIME>> | null,
+    "custom": <<CUSTOM>>
+}
+----
+
+[[KEY]]KEY::
+    Public key in SSH encoding, specified in <<RFC4253>>, <<RFC5656>> and
+    <<RFC8709>>. The comment or label part after the base64-encoded key SHOULD
+    be omitted in the document.
++
+Example:
++
+----
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDtt6XEdNVInhiKkX+ccN++Bk8kccdP6SeBPg0Aq8XFo
+----
+
+[[THRESHOLD]]THRESHOLD::
+    An integer number of keys whose signatures are required in order to consider
+    the identity metadata to be properly signed. Must be between 1 and the
+    number of `*keys*` in the metadata file.
+
+[#id-verification]
+=== Verification
+
+Verification of an identity history proceeds as follows:
+
+[.lst]
+    . Load the latest known <<id-json,id.json>> metadata
+
+    . If the `*expires*` attribute is not `null`, check that the specified
+      <<DATETIME>> does not lie in the past. Otherwise, abort and report an
+      error.
+
+    . Verify that at least `*threshold*` of `*keys*` have provided valid
+      signatures
+
+    . If `*prev*` is not `null`, load the corresponding previous revision of the
+      metadata
+
+    . Verify that at least `*threshold*` of `*keys*` of the _previous_ revision
+      have provided valid signatures over the _current_ revision
+
+    . Repeat steps 4. and 5. until `*prev*` is `null`
+
+    . [[IDENTITY_ID]]Compute the SHA-256 hash over the canonical form of the
+      initial revision. This is the *_identity id_*.
+
+    . If a particular identity id was expected, check that it matches the
+      computed one
+
+
+== Patches
+
+A source code patch is traditionally a differential between source code files.
+In practice, however, such diffs are seldomly exchanged without additional
+context, usually prose describing and motivating the change.
+
+During the process of accepting a patch into the mainline history of a project,
+collaborators may leave comments on the original submission, reference points
+may be annotated ("`tagged`"), and revised versions of the patch may be
+submitted. The degree to which this process is formalised varies between
+projects, as does the preference for capturing it in formal datastructures such
+as ticketing systems. A common property of all these different contributions to
+a code base is that they can be seen as state transitions, where the git commit
+chain helpfully provides a way to establish a partial ordering.
+
+_it_ seeks to unify all kinds of contributions into a single exchange format, a
+<<Bundles,bundle>>, which is already native to git. The semantics of a bundle,
+apart from causal ordering, is defined by its contents, which makes the format
+amenable for future extensions.
+
+In that sense, _it_ aspirationally uses the term "`patch`" in the generalised
+way described by theoretical work such as <<Darcs>>, <<CaPT>>, and <<HoPT>>.
+When describing the more mundane processing procedures, the term "`patch
+bundle`" is also used, alluding to the container format.
+
+=== Bundles
+
+A patch bundle is a <<gitformat-bundle,git bundle>> of either version supported
+by git (v2 or v3). If v3 is used, only the `object-format` capability is
+recognised, specifying an object `filter` is illegal.
+
+For compatibility with git, prerequisite object ids MUST refer to commit
+objects, even though the format specification permits any object type.
+
+The pack data of the bundle MUST NOT contain objects unreachable from the tips
+specified in the bundle header.
+
+[NOTE]
+====
+Enforcing this rule on the receiving end of a patch bundle may not be practical
+in some circumstances. Unreachable objects will automatically be purged if and
+when <<snapshots,snapshots>> are taken (which imply repacking), but it is worth
+noting that there might be security implications of redistributing patch bundles
+which have not been verified to adhere to this rule, as it is possible to
+"`hide`" arbitrary objects in the bundle.
+====
+
+The bundle references may contain zero or more branches, tags or notes. A
+<<Topics,topic>> ref MUST be present. If <<Identities,identities>> need to be
+added or updated, zero or more `ids` refs may be present whose target either
+resolves directly to an updated <<id-json,id.json>>, or is peelable{fn-peel} to
+a tree containing the updated document in a blob named `id.json` at the root.
+
+Where more than one occurrence is permissible, the receiver MAY limit the total
+number of occurrences (see also <<drop-validation>>).
+
+More formally, the permissible references are (in ABNF notation):
+
+[source#bundle-refs,abnf,subs="+macros"]
+----
+refname  = topic / *identity / *branch / *tag / *note
+
+topic    = "refs/it/topics/" <<TOPIC_ID>>
+identity = "refs/it/ids/" <<IDENTITY_ID>>
+branch   = "refs/heads/" name
+tag      = "refs/tags/" name
+note     = "refs/notes/" name
+----
+
+[[TOPIC_ID]]TOPIC_ID::
+    SHA-256 hash, in hexadecimal. The preimage is opaque to _it_, but should be
+    chosen by the initiator of a <<Topics,topic>> such that the probability of
+    collisions with independently initiated topics is very low (for example the
+    contents of the initial message combined with a random nonce).
+
+
+The pack data section of a bundle MAY be encrypted using either <<age>> or GPG.
+
+=== Topics
+
+A topic is conceptually similar to a mailing list thread or structured data such
+as a "`Pull Request`", in that it groups together related information. The
+<<TOPIC_ID,stable identifier>> of a topic is a SHA-256 hash, the preimage of
+which is opaque to _it_.
+
+A patch bundle MUST contain a topic commit history (`refs/it/topics/...`)
+containing objects which represent _interactions_ such as free-form comments,
+code review annotations, attestations ("`signoffs`") or results from CI services.
+The set of all histories referring to the same topic identifier forms a directed
+acyclic graph (DAG), usually a tree, yielding a partial order of topic entries.
+
+If topic entries form a <<CRDT>>, sophisticated "`mutable`" state objects can be
+constructed, resembling concepts commonly managed in a centralised fashion such
+as "`Issues`", "`Task trackers`" or automated merge queues. However, not all
+workflows require this level of sophistication (namely the ability to change
+state collaboratively), and traversing a DAG of semi-structured, easily
+parseable data in topological order is sufficient. Examples of this include
+mailing-list style conversations or archives of external communication systems.
+
+Hence, _it_ mandates that topic histories can have one of two types: message
+based or CRDT based.
+
+[.lst]
+    - [[message-topic]]*Message based* topics consist of a single JSON object
+      per commit, found in a file named `*m*` at the root of the commit's tree.
+      A message based topic is represented by its commit graph.
+
+    - [[crdt-topic]]*CRDT based* topics consist of a single
+      <<automerge-change,change object>> per commit, found in a file named `*c*`
+      at the root of the commit's tree. CRDT based topics are represented by a
+      single object, to which changes are applied in the topological order of
+      the commit graph.
+
+[NOTE]
+====
+The <<Automerge>> CRDT is chosen for its generality. Future versions of this
+document may allow for other CRDTs to be used.
+
+The exact encoding of Automerge changes for use with _it_ is still under
+consideration. Since binary operation payloads are likely to be undesirable for
+the intended use, it may be preferable to define a textual encoding (such as
+JSON), which would make the stored data easier to inspect without specialised
+tooling.
+====
+
+Changing the type of a topic is illegal, and should result in the offending
+patch to be rejected, or be omitted during topic traversal.
+
+In both paradigms, authenticity of authorship is inferred from the cryptographic
+signature of the individual commits. Dependencies, respectively reply-to
+relationships, are expressed as commit parents.
+
+Note that no type or schema information is imposed. It is up to the client to
+interpret the data payload, and potentially omit unknown entries from the
+output.
+
+[#patch-equivalence]
+=== Equivalence
+
+
+Depending on context, two patch bundles are considered equivalent if:
+
+[.lst]
+- The set of bundle reference targets is equal
++
+This means that the bundles logically carry the same information, which is
+preserved even if repacked (e.g. when <<snapshots,snapshots>> are used). This
+equivalence is captured in the <<BUNDLE_HEADS>> value, which is the value a
+patch submitter signs and which determines whether a patch has been received
+before by a <<Drops,drop>>.
+
+- The union of the reference targets and prerequisite objects is equal
++
+When applied to an existing object database, the packfiles require the same
+objects to be present, and result in the same (reachable) state afterwards, and
+so are for practical purposes "`the same`". +
++
+However, packfile generation is not formally guaranteed to be deterministic
+across git implementations or -versions, namely the order of entries in the
+file. For long-term storage, patch bundles are thus referred to by their
+<<BUNDLE_HASH>>.
+
+- Or, the exact file contents are equal
++
+When downloading bundles from untrusted sources, or from content-addressable
+storage, the checksum of the exact contents should be verified. This information
+is preserved as the <<BUNDLE_CHECKSUM>>.
+
+
+== Drops
+
+A _drop_ (as in _-box_ or _deadletter-_) is a hash-linked log which timestamps
+the reception of <<Patches,patches>>. In git terms, it is a history of
+(single-parent) commits, where integrity is ensured through git itself. To add
+authenticity, drops carry additional <<drop-metadata,metadata>> which is secured
+using a scheme based on <<TUF,The Update Framework Specification (TUF)>>.
+
+A drop also carries all <<Identities,identities>> needed to verify cryptographic
+signatures on metadata, <<Patches,patches>>, and optionally git
+commits{fn-commit-signing}, thus forming a PKI. Identities are themselves
+updated through patches.
+
+Importantly, the drop history does _not_ carry the patch payload itself. Patch
+bundles are kept and redistributed as received, and so can make heavy use of
+content distribution networks. At the same time, the drop history itself remains
+fairly small even if not delta-encoded. Together, this allows to operate even
+public drops on relatively constrained hardware.
+
+A drop is a strictly _local-first_ concept -- the drop history may never leave a
+single machine. In order to be able to accept patch proposals, however, a drop
+may make itself _externally addressable_, for example by exposing an HTTP API
+(see <<HTTP API>>).
+
+It is important to note that drop histories, even if they logically describe the
+same project, are not in principle required to converge. In git terms, this
+means that two drop histories may refer to the same set of patch bundles, but
+differ in the ordering of the commits (or other parameters which change the
+commit identity). Conversely, the respective sets of patch bundles may also be
+distinct, to the extent permitted by the connectivity requirement (see
+<<record-patch>>).
+
+An exception to this rule are *mirrors*, whose network addresses are published
+as part of the drop <<mirrors-json,metadata>>: the addresses listed therein are
+interchangeable, i.e. obtaining the drop history from any of them MUST result in
+the exact same state.
+
+[#aggregation]
+Instead of or in addition to exposing a public means of patch submission, drops
+may *aggregate* patches from other drops. That is, they may follow other drops
+just like a normal git remote, and apply patch records to their own history. By
+specifying <<alternates-json,alternates>> in the metadata, a drop promises to
+aggregate submissions from those locations. Aggregation is, however, not limited
+to published alternates: for example, a contributor may maintain their own
+private drop recording only the patches created by that contributor. Another
+drop for the same project may be made aware of a mirror URL for that private
+drop, and update itself from there periodically.
+
+[#drop-metadata]
+=== Metadata
+
+The authenticity of drops is ensured by a trust delegation scheme derived from
+<<TUF>>. There, a role-based threshold signature scheme is used to prove
+authenticity of updates to certain parts of an abstract "`repository`",
+including the metadata containing the trust delegations itself.
+
+For our purposes, some of the properties of a "`repository`" are upheld by git
+itself, while other roles are specific to _it_. There are four roles defined for
+_it_ drops:
+
+[.lst]
+    . Root role
+    . Snapshot role
+    . Mirrors role
+    . Branch roles
+
+Like in TUF, the mirrors role is optional. Also like TUF, we note that it is
+possible to instantiate a drop with a single <<Identities,identity>> (and even
+with a single key) -- which is not considered to be secure, but may be
+convenient in some scenarios.
+
+Root role::
+
+The root role delegates trust to specific <<Identities,identities>> trusted for
+all other roles, by means of being eligible to sign updates to the
+<<drop-json,drop.json>> metadata file.
++
+Delegating to identities instead of directly to keys permits to rotate the
+respective keys independently, thus weakening the requirement for air-gapped
+storage of all root keys.
+
+Snapshot role::
+
+The snapshot role permits signing commits onto the drop history.
++
+This applies mainly to new <<record-json,records>>, but note that it may also
+include updates to the metadata files, yet does not render those updates valid
+as their signatures are verified independently.
++
+The snapshot role is typically granted to machine users on public drop servers.
++
+Snapshot signatures are regular git commit signatures. Pending a practical
+method to obtain multiple signatures on a git commit, `*threshold*` values other
+than `1` are not currently supported.
+
+Mirrors role::
+
+The mirrors role permits signing the <<mirrors-json,mirrors.json>> and
+<<alternates-json,alternates.json>> metadata files.
++
+This role is optional, as not all drop operators may find it practical or useful
+to publish signed mirrors/alternates lists.
+
+[[branch-roles]]Branch roles::
+
+Branch roles are keyed by concrete reference names, which the listed
+<<Identities,identities>> are trusted to update (see <<Mergepoints>>).
+
+
+The metadata files establishing the scheme are described in the following
+sections.
+
+[#drop-json]
+==== `drop.json`
+
+The `drop.json` metadata file is signed by the root role and indicates which
+<<Identities,identities>> are authorised for all roles, including the root role
+itself.
+
+The `*signed*` portion the `drop.json` metadata file is defined as follows:
+
+[source,subs="+macros"]
+----
+{
+    "_type": "eagain.io/it/drop",
+    "spec_version": <<SPEC_VERSION>>,
+    "description": <<DESCRIPTION>>,
+    "prev": <<CONTENT_HASH>> | null,
+    "roles": {
+        "root": <<ROLE>>,
+        "snapshot": <<ROLE>>,
+        "mirrors": <<ROLE>>,
+        "branches": {
+            <<REFNAME>>: <<ANNOTATED_ROLE>>,
+            ...
+        }
+    },
+    "custom": <<CUSTOM>>
+}
+----
+
+[[ANNOTATED_ROLE]]ANNOTATED_ROLE::
+    Like a <<ROLE>>, but with an additional field `*description*` of type
+    <<DESCRIPTION>>.
++
+[source#annotated-role,subs="+macros"]
+----
+{
+    "ids": [
+        <<IDENTITY_ID>>,
+        ...
+    ],
+    "threshold": <<THRESHOLD>>,
+    "description": <<DESCRIPTION>>
+}
+----
+
+[[CUSTOM]]CUSTOM::
+    An arbitrary JSON object carrying user-defined data. To avoid conflicts, it
+    is RECOMMENDED to key custom objects by a URL-like identifier. For example:
++
+[source#example-custom]
+----
+{
+    "custom": {
+        "eagain.io/it/emojicoin": {
+            "insert-here": "lol1u2vgx76adff"
+        }
+    }
+}
+----
+
+[[DESCRIPTION]]DESCRIPTION::
+    A UTF-8 string with a maximum length of 128 bytes, i.e. a
+    <<VARCHAR,VARCHAR(128)>>.
+
+[[REFNAME]]REFNAME::
+    A full git refname (i.e. starting with "`refs/`"), well-formed as per
+    <<git-check-ref-format>>.
+
+[[ROLE]]ROLE::
+    Dictionary of a set of <<IDENTITY_ID,identity ids>> assigned to that role,
+    paired with a <<THRESHOLD,threshold>>. I.e.:
++
+[source#role,subs="+macros"]
+----
+{
+    "ids": [
+        <<IDENTITY_ID>>,
+        ...
+    ],
+    "threshold": <<THRESHOLD>>
+}
+----
++
+Example:
++
+[source#example-role,json]
+----
+{
+    "ids": [
+        "671e27d4cce92f747106c7da90bcc2be7072909afa304d008eb8ecbfdebfbfe2"
+    ],
+    "threshold": 1
+}
+----
+
+[#mirrors-json]
+==== `mirrors.json`
+
+The `mirrors.json` file is signed by the mirrors role. It describes known
+network addresses of read-only copies of the drop, believed to be kept in-sync
+with the drop within a reasonable time window by its operators.
+
+The `*signed*` portion of the `mirrors.json` file is defined as follows:
+
+[source,subs="+macros"]
+----
+{
+    "_type": "eagain.io/it/mirrors",
+    "spec_version": <<SPEC_VERSION>>,
+    "mirrors": [
+        <<MIRROR>>,
+        ...
+    ],
+    "expires": <<DATETIME>> | null
+}
+----
+
+[[MIRROR]]MIRROR::
+    A dictionary describing a mirror.
++
+[source#mirror,subs="+macros"]
+----
+{
+    "url": <<URL>>,
+    "kind": <<MIRROR_KIND>>,
+    "custom": <<CUSTOM>>
+}
+----
+
+[[MIRROR_KIND]]MIRROR_KIND::
+    Hint at what retrieval method is offered by the mirror. Unknown values MUST
+    be accepted during parsing and signature verification. Defined values are:
+
+[.lst]
+    - *bundled*: the mirror is expected to serve patch bundles at the well-known
+      <<http-fetch-bundle,HTTP>> endpoint relative to `*url*`, if `*url*`
+      denotes a HTTP URL
+    - *packed*: the mirror is a plain git server, but the client may reify
+      bundles by requesting the appropriate objects over the regular git network
+      protocol
+    - *sparse*: the mirror does not host bundle data at all, only the drop
+      history. This can be useful in constrained environments such as
+      peer-to-peer storage if (and only if) the <<record-json,record.json>>
+      entries specify stable bundle URIs.
+
+
+[#alternates-json]
+==== `alternates.json`
+
+The `alternates.json` file is signed by the mirrors role. It describes known
+network addresses of writeable (e.g. via <<HTTP API,HTTP>>) drops where
+<<Patches,patches>> pertaining the same project may be submitted. The method of
+submission is described by the alternate's URL. A drop publishing an
+`alternates.json` file implicitly promises to <<aggregation,aggregate>> patches
+from the alternates listed, although it is free to do so only selectively.
+
+The `*signed*` portion of the `alternates.json` file is defined as follows:
+
+[source,subs="+macros"]
+----
+{
+    "_type": "eagain.io/it/alternates",
+    "spec_version": <<SPEC_VERSION>>,
+    "alternates": [
+        <<URL>>,
+        ...
+    ],
+    "custom": <<CUSTOM>>,
+    "expires": <<DATETIME>> | null
+}
+----
+
+[#drop-verification]
+=== Verification
+
+To verify a drop, the <<drop-json,drop.json>> metadata file must be verified
+first:
+
+[.lst]
+    . From the latest known commit of the drop history, load the
+      <<drop-json,drop.json>> file
+
+    . For each <<IDENTITY_ID,identity id>> in the `*root*` role of the file,
+      resolve the corresponding <<Identities,identity>> and
+      <<id-verification,verify>> it{fn-resolve-id}
+
+    . Verify that no key is being referenced by more than one identity
+
+    . Verify that the <<drop-json,drop.json>> file is signed by a threshold of
+      identities as specified in the `*threshold*` attribute of the `*root*`
+      role. Signatures by multiple keys from the same identity are allowed, but
+      don't count toward the threshold.
+
+    . If `*prev*` is not `null`, load the corresponding previous revision of the
+      metadata
+
+    . Verify that the threshold specified in the _previous_ revision is met on
+      the _current_ revision, loading and verifying additional identities as
+      needed
+
+    . Repeat steps 5. and 6. until `*prev*` is `null`
+
+Having obtained a verified <<drop-json,drop.json>> metadata file, it can now be
+verified that the head commit of the drop history is signed by a key belonging
+to an identity which is assigned the `*snapshot*` role.
+
+If a <<mirrors-json,mirrors.json>> and/or <<alternates-json,alternates.json>> is
+present in the head commit's tree, it should be verified as follows:
+
+[.lst]
+    . Load the metadata file
+
+    . If the `*expires*` attribute is not `null`, check that the specified
+      <<DATETIME>> does not lie in the past
+
+    . For each <<IDENTITY_ID,identity id>> in the `*mirrors*` role of the
+      <<drop-json,drop.json>> file, resolve the corresponding
+      <<Identities,identity>> and <<id-verification,verify>> it{fn-resolve-id}
+
+    . Verify that the metadata file is signed by a threshold of identities as
+      specified in the `*threshold*` attribute of the `*mirrors*` role.
+      Signatures by multiple keys from the same identity are allowed, but don't
+      count toward the threshold.
+
+Verification of mirror- and alternates-lists MAY be deferred until they are
+actually used. Failure to verify <<mirrors-json,mirrors.json>> or
+<<alternates-json,alternates.json>> does not render the drop metadata invalid.
+
+[#history-repr]
+=== History representation
+
+A drop history is stored as a git commit history. Initially, it contains only
+the metadata, organised in a tree with the following layout:
+
+.Drop metadata tree
+[source#drop-tree,subs="+macros"]
+----
+.
+|-- <<drop-json,drop.json>>
+|-- <<mirrors-json,mirrors.json>>
+|-- <<alternates-json,alternates.json>>
+`-- ids
+    |-- <<IDENTITY_ID,identity-id>>
+    |   `-- <<id-json,id.json>>
+    `-- ...
+----
+
+[NOTE]
+====
+In this document, tree entries are ordered for legibility, which is not
+necessarily how they are ordered by git.
+====
+
+In <<drop-tree>>, the `mirrors.json` and `alternates.json` files are
+optional. The `ids` hierarchy contains at least all <<Identities,identities>>
+needed to verify the metadata files, where the `id.json` file represents the
+most recent revision of the identity. It is up to the implementation how to make
+previous revisions available, although most are expected to opt for a "`folded`"
+representation where previous revisions are stored as files in a subdirectory.
+
+A commit which updates metadata files may carry a free-form commit message. Data
+created by a previous patch commit SHOULD be removed from the tree.
+
+To <<record-patch,record a patch>>, the <<record-json,record.json>> is written
+to the tree adjacent to the other metadata files. If the patch contains identity
+updates, the `ids` subtree is updated accordingly.
+
+The patch <<Topics,topic>> is written as a <<git-interpret-trailers,trailer>>
+keyed "`Re:`", as shown in <<example-topic-commit>>. This allows to collect
+patches for a particular topic from the drop history without having to access
+objects deeper than the commit.
+
+
+.Simplified topic commit
+[#example-topic-commit]
+----
+commit ccd1fd5736bed6fb6342e34c9d8cbc2b9db7f326
+Author: Kim Altintop <kim@eagain.io>
+Date:   Mon Dec 12 10:47:32 2022 +0100
+
+    Re: 1fdc53e27b01b440839ff1b6c14ef81c3d63d0f2b39aae8fb4abd0b565ea0b10
+----
+
+Lastly, the <<BUNDLE_HEADS>> (cf. <<patch-equivalence>>) are written to a file
+`heads` adjacent to the `record.json` file in the tree. Provided appropriate
+atomicity measures, this provides a reasonably efficient way to determine if a
+patch has been received before by simply probing the object database for
+existence of the corresponding <<BLOB_HASH>>.
+
+==== Location-independent storage
+
+Since the drop history only stores metadata, it should be suitable for
+location-independent storage inheriting some of git's data model, e.g. <<IPFS>>,
+<<Hypercore>>, or <<SSB>>. Those systems come with their own limitations,
+perhaps the most severe one in our context being the lack of a reliable and
+efficient way to propagate contributions from _unknown_ identities back to the
+root drop. Thus, exact mappings are deferred to a future revision of this
+document.
+
+We note, however, that distributing <<gitformat-bundle,git bundle>> snapshots of
+the drop history itself over protocols which support some form of name
+resolution (such as <<IPNS>>) may present an attractive bandwidth-sharing
+mechanism.
+
+
+[#record-patch]
+=== Recording patches
+
+Once a patch has passed <<drop-validation,validation>>, its reception is
+recorded in the drop history as a file containing metadata about the patch. The
+file's schema may be extended over time, where the currently defined properties
+are:
+
+.`record.json`
+[source#record-json,subs="+macros"]
+----
+{
+    "bundle": {
+        "len": <<BUNDLE_SIZE>>,
+        "hash": <<BUNDLE_HASH>>,
+        "checksum": <<BUNDLE_CHECKSUM>>,
+        "prerequisites": [
+            <<OBJECT_ID>>,
+            ...
+        ],
+        "references": {
+            <<REFNAME>>: <<OBJECT_ID>>,
+            ...
+        },
+        "encryption": "age" | "gpg",
+        "uris": [
+            <<URL>>,
+            ...
+        ]
+    },
+    "signature": {
+        "signer": <<CONTENT_HASH>>,
+        "signature": <<SIGNATURE>>,
+    }
+}
+----
+
+[[BUNDLE_SIZE]]BUNDLE_SIZE::
+    Size in bytes of the bundle file as received.
+
+[[BUNDLE_HASH]]BUNDLE_HASH::
+    SHA-256 hash over the sorted set of object ids (in bytes) referenced by the
+    bundles, i.e. both the prerequisites and reference heads.
+
+[[BUNDLE_CHECKSUM]]BUNDLE_CHECKSUM::
+    SHA-256 hash over the bundle file as received.
+
+[[BUNDLE_SIGNATURE]]BUNDLE_SIGNATURE::
+    Signature over the <<BUNDLE_HEADS>>, in hexadecimal.
+
+[[BUNDLE_HEADS]]BUNDLE_HEADS::
+    SHA-256 hash over the sorted set of object ids (in bytes) or the reference
+    heads of the bundle (i.e. without the prerequisites).
+
+The `*signature*` field captures the signature made by the submitter of the
+patch. Multiple signatures may be supported in a future revision of this
+document.
+
+The `*uris*` field enumerates alternate network addresses from which the bundle
+file may be downloaded. Since the recorded information is immutable, this is
+mainly intended for content-based addresses, such as IPFS CIDs.
+
+Additionally, the drop will want to record the hashed reference heads in an
+efficiently retrievable form, such that it can be quickly determined if a patch
+has been received before (see <<patch-equivalence>>, <<history-repr>>).
+Similarly for the patch <<Topics,topic>>.
+
+
+[#drop-validation]
+==== Validation
+
+Accepting a patch for inclusion in the drop history is subject to validation
+rules, some of which depend on preferences or policies. A public drop server
+will want to apply stricter rules before accepting a patch than a user who is
+applying a patch to a local (unpublished) drop history.
+
+The *mandatory* validations are:
+
+[.lst]
+    . The bundle file MUST be available locally before creating a log entry
+    . The bundle MUST be connected, i.e. its prerequisite objects must be
+      present in bundles received prior to the one under consideration
+    . The bundle MUST NOT have been received before (cf. <<patch-equivalence>>)
+    . The bundle MUST conform to the conventions specified in <<Patches>>
+    . The bundle MUST be signed and the signer's (i.e. submitter's)
+      <<Identities,identity>> resolvable, either from the drop state or the
+      bundle contents (or both)
+    . If the bundle contains identity updates, they MUST pass
+      <<id-verification,verification>> and MUST NOT diverge from their
+      previously recorded history (if any)
+
+[NOTE]
+====
+Validation 5. entails that a patch submission message must carry the
+<<CONTENT_HASH>> of the submitter's identity head revision.
+====
+
+Additional RECOMMENDED validations include:
+
+[.lst]
+    - restricting the size in bytes of the patch bundle
+    - restricting the number of references a bundle can convey
+    - restricting the number of commits, or total number of objects a bundle can
+      contain
+    - rejecting patches whose <<Topics,topic>> is not properly signed by the
+      submitter, does not cleanly apply to a merged history of previously
+      received patches on the same topic, or contains otherwise invalid data
+
+Beyond that, a drop may also decide to reject a patch if it is encrypted, or if
+its contents do not pass content analysis proper (e.g. Bayesian filtering).
+
+
+[#snapshots]
+=== Snapshots
+
+Over time, a drop will accumulate many small patch bundles. Repacking them into
+larger bundles is likely to reclaim storage space by means of offering more
+opportunities for delta compression. It can also be beneficial for data
+synchronisation (especially non-incremental) to avoid too many network
+roundtrips.
+
+In principle, a drop could employ a dynamic repacking scheme, and either serve
+larger than requested data when individual bundles are requested, or offer a way
+to dynamically discover snapshotted alternatives via the bundle-uri negotiation
+mechanism (see <<http-fetch-bundle>>). This would, however, preclude drops which
+delegate bundle storage entirely (such as packed or sparse
+<<MIRROR_KIND,mirrors>>) from benefiting from this optimisation. Therefore, we
+define a convention for publishing snapshots as patches on the drop itself.
+
+A snapshot is a <<Patches,patch>> posted to the well-known topic
+`SHA256("snapshots")`, i.e.:
+
+[source]
+----
+2b36a6e663158ffd942c174de74dbe163bfdb1b18f6d0ffc647e00647abca9bb
+----
+
+A snapshot bundle may either capture the entire history of the drop, or depend
+on an earlier snapshot. The bundle references capture all references of the
+patch bundles received prior to the snapshot, up until the previous snapshot if
+the snapshot is incremental. In order to be unique within the snapshot bundle,
+the patch bundle references are rewritten as follows:
+
+[.lst]
+    . Strip the `refs/` prefix
+    . Prepend `refs/it/bundles/<<BUNDLE_HEADS>>/`
+
+For example:
+
+[source#example-snapshot-refs]
+----
+refs/it/bundles/107e80b2287bc763d7a64bee9bc4401e12778c55925265255d4f2a38296262b8/heads/main 77ce512aa813988bdca54fa2ba5754f3a46c71f3
+refs/it/bundles/107e80b2287bc763d7a64bee9bc4401e12778c55925265255d4f2a38296262b8/it/topics/c44c20434bfdaa0384b67d48d6c3bb36d755b87576027671f606c404b09d9774 65cdd5234e310efc1cb0afbc7de0a2786e6dd582
+----
+
+The payload of the <<Topics,topic>> entry associated with a snapshot is not
+defined normatively. It is RECOMMENDED to use a <<message-topic,message based
+topic>>, where a payload schema could be:
+
+[source#snapshot-topic-payload,subs="+macros"]
+----
+{
+    "_type": "eagain.io/it/notes/checkpoint",
+    "kind": "snapshot",
+    "refs": {
+        <<REFNAME>>: <<OBJECT_ID>>,
+        ...
+    }
+}
+----
+
+Taking a snapshot implies privileged access to the drop repository, and can only
+be submitted by the snapshot role.
+
+After publishing a snapshot, a drop MAY prune patch bundles recorded prior to
+the snapshot, possibly after a grace period (for example, by only pruning
+bundles older than the N-1st snapshot). When synchronising with a drop, clients
+which encounter a snapshot record should thus prefer fetching only snapshots
+from this point on in the drop history.
+
+
+[#mergepoints]
+=== Mergepoints
+
+It is often useful for a drop to convey cryptographically verifiable reference
+points for contributors to base source code changes on, i.e. long-running
+branches.
+
+While the process of agreeing on what changes are to be finalised into such
+branches can vary widely between projects, and could even involve the evaluation
+of <<crdt-topic,CRDT state>>, the final statement can be reduced to restricting
+the set of allowed signers of a patch bundle (which updates a certain set of
+branches). This is what the <<branch-roles,branch roles>> in the
+<<drop-json,drop.json>> metadata file are for: they make certain
+<<Identities,identities>> eligible for submitting _mergepoints_ affecting named
+long-running branches.
+
+A mergepoint is a <<Patches,patch>> posted to the well-known topic
+`SHA256("merges")`, i.e.:
+
+[source]
+----
+c44c20434bfdaa0384b67d48d6c3bb36d755b87576027671f606c404b09d9774
+----
+
+A mergepoint bundle may contain one or more references matching exactly the
+names specified in the drop's <<branch-roles,branch roles>>, and MUST only be
+accepted if the submitter(s) identities are allowed as per the role definition.
+
+As with <<snapshots,snapshots>>, the topic payload is not defined normatively.
+It is RECOMMENDED to use <<message-topic,message based topic>>, where a payload
+schema could be:
+
+[source#mergepoint-topic-payload,subs="+macros"]
+----
+{
+    "_type": "eagain.io/it/notes/checkpoint",
+    "kind": "merge",
+    "refs: {
+        <<REFNAME>>: <<OBJECT_ID>>,
+        ...
+    }
+}
+----
+
+Upon encountering a mergepoint properly signed by the applicable branch roles, a
+client may update the targets of a local representation of the mergepoint
+references _iff_ the local targets are in the ancestry path of the mergepoint
+targets.
+
+
+=== HTTP API
+
+<<Drops,Drops>> MAY expose an HTTP API for accepting and serving patch bundles.
+Drops listed as alternates in the drop <<alternates-json,metadata>> MUST conform
+to this API (endpoint paths are interpreted as relative to the alternate URL).
+The defined endpoints of the API are as follows:
+
+[#http-fetch-bundle]
+==== Fetching patch bundles
+
+---
+
+[source,subs="+macros"]
+----
+GET /bundles/<<BUNDLE_HASH,bundle-hash>>[.bundle|.uris]
+----
+
+---
+
+Without a file extension suffix, this endpoint conforms to the git
+<<bundle-uri>> specification: the server may either respond by sending the
+bundle file identified by <<BUNDLE_HASH,bundle-hash>>, or a bundle list.
+
+When responding with a bundle list:
+
+[.lst]
+    - `mode` MUST be `any`
+    - `<id>` segments MUST be treated as opaque by the client
+    - entries specifying a `filter` MUST be ignored by the client
+
+In addition to regular `uri` values (relative, `http://`, `https://`), `ipfs://`
+URLs are accepted. If encountered, a client MAY rewrite them to
+<<IPFS-GATEWAY,gateway URLs>> to fetch the bundle from.
+
+By specifying the `.bundle` suffix, a client instructs the server to either
+respond with the bundle file, or a 404 status, but never with a bundle list.
+Correspondingly, by specifying `.uris`, the server MUST respond with a bundle
+list, or a 404 status, but never with a bundle file.
+
+.Example bundle list
+[source]
+----
+[bundle]
+    version = 1
+    mode = any
+    heuristic = creationToken
+
+[bundle "8aea1a1c20b09ed9ad4737adc6319203d65a0026ac86873f84f7961bd42f132c"]
+    uri = /bundles/6c4d3d4e4db8e37c698f891e94780c63e1b94f87c67925cd30163915c7d7923e.bundle
+
+[bundle "816dc1231cb1b82a91144ebb9e325c3655f4b4da30f806a84fa86fdb06ca9c04"]
+    uri = https://it.example.com/bundles/6c4d3d4e4db8e37c698f891e94780c63e1b94f87c67925cd30163915c7d7923e.bundle
+    creationToken = 1670838467
+
+[bundle "f4ecc80c9339ecdbc2a8f4c0d19e990f8ee9631e6b7f3e044b86c35fe69505d3"]
+    uri = ipfs://QmVTw4vVFWkPBN6ZT7To4BHoNBfaBNjVJ17wK15tci6bn1
+    creationToken = 1670839391
+----
+
+
+[#http-submit-patch]
+==== Submitting patches
+
+---
+
+[source,subs="+macros"]
+----
+POST /patches
+<<HEADER_SIGNATURE>>
+----
+
+---
+[[HEADER_SIGNATURE]]HEADER_SIGNATURE::
+    A <<BUNDLE_SIGNATURE>> and corresponding identity <<CONTENT_HASH>>, encoded
+    suitable for use as a HTTP header value:
++
+[source,subs="+macros"]
+----
+X-it-signature: s1={<<BLOB_HASH>>}; s2={<<BLOB_HASH>>}; sd={<<BUNDLE_SIGNATURE>>}
+----
+
+The body of this request is a bundle file. The bundle signature is transmitted
+as a HTTP header, allowing for the bundle file to be streamed directly from
+disk.
+
+Once the drop server has received the request body, it attempts to
+<<record-patch,record the patch>>, and responds with the corresponding
+<<record-json,record.json>> document, or an error.
+
+Optionally, the server MAY accept a request of the form:
+
+---
+
+[source#request-pull,subs="+macros"]
+----
+POST /patches/request-pull
+Content-Type: application/x-www-form-urlencoded
+<<HEADER_SIGNATURE>>
+
+url=<<URL>>
+----
+
+---
+
+If accepted, the server attempts to fetch the bundle file from the URL given in
+the form field before continuing as if the bundle was submitted directly in the
+request body. Otherwise, the server responds with an error code in the 4xx range
+to indicate that this method of submission is not supported.
+
+
+== Future work
+
+We found that git bundles are a simple yet effective container format. They are,
+however, not extensible: git, being the reference implementation, rejects
+bundles whose header does not exactly conform to the specified format. While
+compatibility with upstream git was a design goal for the current iteration of
+_it_, we may want to evolve the format independently in the future, e.g. by
+embedding cryptographic signatures directly in the file.
+
+We have deliberately not mandated strict schema checking for topic payloads
+respectively CRDT objects, although we acknowledge that interoperability will
+eventually demand for some method to be devised. Since the design space is quite
+large -- ranging from static schema definitions to runtime evaluation of a
+dynamic interpreter -- this would have been well beyond the scope of the
+current specification.
+
+---
+
+[discrete]
+== Acknowledgements
+
+The author would like to thank Alex Good for a perpetual supply of ideas worth
+considering.
+
+---
+
+[discrete]
+== Copyright notice
+
+Copyright © 2022-2023 Kim Altintop. This work is made available under the
+<<CC-BY-SA-4,Creative Commons Attribution 4.0 International License>>. To the
+extent portions of it are incorporated into source code, such portions in the
+source code are licensed under either the <<Apache-2,Apache License 2.0>> or the
+<<MIT,MIT license>> at your option.
+
+
+[bibliography]
+== References
+
+// IETF
+* [[[RFC2119]]]: https://datatracker.ietf.org/doc/html/rfc2119
+* [[[RFC3339]]]: https://datatracker.ietf.org/doc/html/rfc3339#section-5.6
+* [[[RFC4253]]]: https://datatracker.ietf.org/doc/html/rfc4253
+* [[[RFC5656]]]: https://datatracker.ietf.org/doc/html/rfc5656
+* [[[RFC8174]]]: https://datatracker.ietf.org/doc/html/rfc8174
+* [[[RFC8709]]]: https://datatracker.ietf.org/doc/html/rfc8709
+* [[[ssh-agent]]]: https://datatracker.ietf.org/doc/html/draft-miller-ssh-agent
+
+// Other specs
+* [[[automerge-change]]]: https://alexjg.github.io/automerge-storage-docs/#change-reference
+* [[[Canonical-JSON]]]: http://wiki.laptop.org/go/Canonical_JSON
+* [[[DID]]]: https://www.w3.org/TR/did-core
+* [[[semver]]]: https://semver.org
+* [[[TUF]]]: https://theupdateframework.github.io/specification/latest
+* [[[WHATWG-URL]]]: https://url.spec.whatwg.org
+
+// Licenses
+* [[[Apache-2]]]: https://www.apache.org/licenses/LICENSE-2.0
+* [[[CC-BY-SA-4]]]: https://creativecommons.org/licenses/by/4.0
+* [[[MIT]]]: https://spdx.org/licenses/MIT.html
+
+// git
+* [[[bundle-uri]]]: https://git-scm.com/docs/bundle-uri
+* [[[git-check-ref-format]]]: https://git-scm.com/docs/git-check-ref-format
+* [[[git-format-patch]]]: https://git-scm.com/docs/git-format-patch
+* [[[git-hash-object]]]: https://git-scm.com/docs/git-hash-object
+* [[[git-interpret-trailers]]]: https://git-scm.com/docs/git-interpret-trailers
+* [[[git]]]: https://git-scm.com
+* [[[gitformat-bundle]]]: https://git-scm.com/docs/gitformat-bundle
+* [[[gitglossary]]]: https://git-scm.com/docs/gitglossary
+
+// Patch Theory
+* [[[Darcs]]]: https://en.wikibooks.org/wiki/Understanding_Darcs/Patch_theory
+* [[[CaPT]]]: https://arxiv.org/abs/1311.3903
+* [[[HoPT]]]: https://www.cambridge.org/core/journals/journal-of-functional-programming/article/homotopical-patch-theory/42AD8BB8A91688BCAC16FD4D6A2C3FE7
+
+// Misc
+* [[[age]]]: https://age-encryption.org/v1
+* [[[Automerge]]]: https://automerge.org
+* [[[CRDT]]]: https://en.wikipedia.org/wiki/Conflict-free_replicated_data_type
+* [[[Hypercore]]]: https://hypercore-protocol.org
+* [[[IPFS-GATEWAY]]]: https://docs.ipfs.tech/concepts/ipfs-gateway
+* [[[IPFS]]]: https://ipfs.tech
+* [[[IPNS]]]: https://docs.ipfs.tech/concepts/ipns
+* [[[local-first]]]: https://www.inkandswitch.com/local-first/
+* [[[OpenSSH]]]: https://www.openssh.com
+* [[[SSB]]]: https://scuttlebutt.nz

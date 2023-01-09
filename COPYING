@@ -1,0 +1,24 @@
+`it` is provided under:
+
+    SPDX-License-Identifier: GPL-2.0-only WITH openvpn-openssl-exception
+
+Being under the terms of the GNU General Public License version 2 only,
+according with:
+
+    LICENSES/GPL-2.0
+
+With an explicit exception regarding OpenSSL, as stated at:
+
+    LICENSES/exceptions/openvpn-openssl-exception
+
+All documentation, including specification documents, are provided under the
+Creative Commons Attribution-ShareAlike 4.0 International license, according
+with:
+
+    LICENSES/CC-BY-SA-4.0
+
+In addition, other licenses may also apply. In particular, individual source
+code files may be dual-licensed by their respective copyright holders, as
+indicated in the 'SPDX-License-Identifier' header of the file.
+
+All contributions to `it` are subject to this COPYING file.

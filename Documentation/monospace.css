@@ -1,0 +1,72 @@
+/* SPDX-License-Identifier: MIT
+ *
+ * Based on https://github.com/darshandsoni/asciidoctor-skins/blob/c98a8ab9b27571e5b63d75912a3c753cc72ed8e4/css/monospace.css
+ *
+ */
+
+@import url(https://cdn.jsdelivr.net/gh/asciidoctor/asciidoctor@2.0/data/stylesheets/asciidoctor-default.css);
+
+:root {
+--maincolor:#FFFFFF;
+--primarycolor:#000000;
+--secondarycolor:#000000;
+--tertiarycolor: #000000;
+--sidebarbackground:#CCC;
+--linkcolor:#000000;
+--linkcoloralternate:#f44336;
+--white:#FFFFFF;
+--black:#000000;
+--font: SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+}
+
+html,body {
+    font-size: 80%;
+}
+body {
+    font-family: var(--font);
+}
+h1 {
+    color: var(--primarycolor) !important;
+    font-family: var(--font);
+}
+h2,h3,h4,h5,h6 {
+    color: var(--secondarycolor) !important;
+    font-family: var(--font);
+}
+pre,code {
+    font-family: var(--font);
+    white-space: pre;
+}
+
+#header,#content,#footnotes,#footer {
+    max-width: 72em;
+}
+#footer {
+    display: none;
+}
+#footnotes .footnote {
+    font-size: 1em;
+}
+.title {
+    color: var(--tertiarycolor) !important;
+    font-family: var(--font) !important;
+    font-style: normal !important;
+    font-weight: normal !important;
+}
+.content>pre {
+    font-size: 1rem;
+}
+#toctitle {
+    font-family: var(--font);
+    font-size: 2em;
+    color: var(--primarycolor);
+}
+.sectlevel1 {font-family: var(--font)!important; font-size: 1.0625rem;}
+.sectlevel2 {font-family: var(--font)!important;}
+.sectlevel3 {font-family: var(--font)!important;}
+.sectlevel4 {font-family: var(--font)!important;}
+
+.lst,dl {
+    padding-left: 5%;
+    padding-right: 10%;
+}

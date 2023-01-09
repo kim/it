@@ -1,0 +1,310 @@
+// Copyright © 2023 Kim Altintop <kim@eagain.io>
+// SPDX-License-Identifier: CC-BY-SA-4.0
+
+= Getting started with _it_
+:stylesheet: monospace.css
+:source-highlighter: pygments
+
+This document walks you through the very basics of _it_. Many of the
+interactions below may be automated away eventually, but our goal here is to
+provide an overview of what is going on under the hood.
+
+
+== Prerequisites
+
+We are going to assume you have the _it_ executable installed using
+
+    cargo install --git https://git.eagain.io/it
+
+Chances are that you already have an SSH key handy. If not, or if you want to
+use a key specifically for this exercise, generate one using
+
+    ssh-keygen -t ed25519
+
+It is also a good idea to add this key to your `ssh-agent`, so you don't have to
+type the password every time it is used for signing. Typing `ssh-add` usually
+does the trick.
+
+Next, we'll need to teach git to use our SSH key for signing. If you followed
+above recommendation and are using an agent for signing, the following commands
+will set it up as a default:
+
+    git config --global gpg.format ssh
+    git config --global user.signingKey "key::$(cat /path/to/your_key.pub)"
+
+If you prefer to not mess with your existing git configuration, you can also
+arrange for the key to be recognised by _it_ itself by running the following
+command instead:
+
+    git config --global it.signingKey "key::$(cat /path/to/your_key.pub)"
+
+Lastly, we'll create an _it_ xref:spec.adoc#_identities[identity] using this
+key:
+
+    it id init
+
+The command's output will look similar to this:
+
+[source,json]
+----
+{
+  "committed": {
+    "repo": "~/.local/share/it/ids",
+    "ref": "refs/heads/it/ids/671e27d4cce92f747106c7da90bcc2be7072909afa304d008eb8ecbfdebfbfe2",
+    "commit": "e08c34df95cd28aa212a4d110ecfb8acec2a102c"
+  },
+  "data": {
+    "signed": {
+      "_type": "eagain.io/it/identity",
+      "spec_version": "0.1.0",
+      "prev": null,
+      "keys": [
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDtt6XEdNVInhiKkX+ccN++Bk8kccdP6SeBPg0Aq8XFo"
+      ],
+      "threshold": 1,
+      "mirrors": [],
+      "expires": null,
+      "custom": {}
+    },
+    "signatures": {
+      "ddc27a697903b8fe3ae3439818af81eaac20ba65e51a4170e3c81eb25abd1767": "5a460b26099ddd42912b7a52ee0c478619425ddfe4a562fd2ffd427d84cde6ab32effd8971308cfcdb64b08ac920e7a2c2a69d11b0ca7fe293e39306cd4d7c01"
+    }
+  }
+}
+----
+
+The `data` object is exactly what is stored in the repository `repo` at branch
+`ref`, which we invite you to convince yourself of using normal git commands.
+
+Identities can describe multiple keys, and carry additional custom metadata, but
+we'll skip over this for now.
+
+
+== Local drop
+
+_it_ is organised around patches. You know, like in the olden days, but
+xref:spec.adoc#_patches[not quite]. Patches are recorded onto a log dubbed
+xref:spec.adoc#_drops["`drop`"].
+
+If you have a git repository to toy around with, you can initialise a drop
+adjacent to the "normal" branches in it. You can record patches (which you may
+have received from elsewhere) onto that local drop, and push it to wherever you
+like.
+
+To initialise a drop in this way, just run:
+
+    it drop init --description "my project"
+
+This will drop you into `$EDITOR` to give you an opportunity to customise the
+drop's metadata, which will look similar to this:
+
+[source,json]
+----
+{
+  "description": "my project",
+  "roles": {
+    "drop": {
+      "ids": [
+        "671e27d4cce92f747106c7da90bcc2be7072909afa304d008eb8ecbfdebfbfe2"
+      ],
+      "threshold": 1
+    },
+    "snapshot": {
+      "ids": [
+        "671e27d4cce92f747106c7da90bcc2be7072909afa304d008eb8ecbfdebfbfe2"
+      ],
+      "threshold": 1
+    },
+    "mirrors": {
+      "ids": [
+        "671e27d4cce92f747106c7da90bcc2be7072909afa304d008eb8ecbfdebfbfe2"
+      ],
+      "threshold": 1
+    },
+    "branches": {
+      "refs/heads/main": {
+        "ids": [
+          "671e27d4cce92f747106c7da90bcc2be7072909afa304d008eb8ecbfdebfbfe2"
+        ],
+        "threshold": 1,
+        "description": "the default branch"
+      }
+    }
+  },
+  "custom": {}
+}
+----
+
+You may want to check if _it_ has guessed your mainline branch correctly (in the
+`branches` section), but otherwise just save and exit to finish the
+initialisation step. Run
+
+    git log -p refs/it/patches
+
+to see the effect.
+
+
+We want source code patches to be against the `refs/heads/main` branch, so we
+need to teach the drop about what the current state is:
+
+    it merge-point record
+
+Again, you may want to run `git log` as above to see what changed. You'll notice
+a line starting with "Re:" in the latest commit message: this is the
+xref:spec.adoc#_topics[topic] of a patch, and a xref:spec.adoc#mergepoints[merge
+point] is just a patch with a well-known topic. Run
+
+    it topic ls
+
+to see that this topic now exists, and
+
+    it topic show c44c20434bfdaa0384b67d48d6c3bb36d755b87576027671f606c404b09d9774
+
+to display the metadata recorded in it.
+
+Whenever you update `refs/heads/main`, run `merge-point record` again to convey
+the new head to the drop. ``show``ing the topic as above will give you a log of
+every such update.
+
+
+Finally, let's create a patch: make some changes on a feature branch, like you
+normally would, and then run
+
+    it patch record
+
+This will drop you into `$EDITOR`, asking you to describe what the patch is
+about. After you save and exit, a new record will be committed onto the drop,
+and a new topic will have been created:
+
+    $ it topic ls
+    {
+      "topic": "2d2d3c97df62b18d3d1476342fe9d6df0989592f6d55d151350422795da714d8",
+      "subject": "Just testin"
+    }
+    {
+      "topic": "c44c20434bfdaa0384b67d48d6c3bb36d755b87576027671f606c404b09d9774",
+      "subject": "Merges"
+    }
+
+You can post more patches to an existing topic, and reply to a specific entry
+within the topic. Because a patch in _it_ is really a combination of commentary
+and source code changes, and source code changes are actually optional, we have
+a handy shortcut to just, well, comment:
+
+    it topic comment record 2d2d3c97df62b18d3d1476342fe9d6df0989592f6d55d151350422795da714d8
+
+Type your comment into `$EDITOR`, save and exit. The result may look like this:
+
+    $ it topic show 2d2d3c97df62b18d3d1476342fe9d6df0989592f6d55d151350422795da714d8
+    {
+      "header": {
+        "id": "11337eb409fbd16a034d0323dfa8d879b5a0f36c",
+        "author": {
+          "name": "Kim Altintop",
+          "email": "kim@eagain.io"
+        },
+        "time": "2023-01-09T09:39:15+01:00",
+        "patch": {
+          "id": "8da0f98009aae98e7ca9df926125aa386a4f6a644c2036e9ec86a0810a7b8a62",
+          "tips": []
+        },
+        "in-reply-to": "0c9b7c0b437a3a072f3a1eead17703d22a0bf8f1"
+      },
+      "message": {
+        "_type": "eagain.io/it/notes/basic",
+        "message": "Ship it"
+      }
+    }
+    {
+      "header": {
+        "id": "0c9b7c0b437a3a072f3a1eead17703d22a0bf8f1",
+        "author": {
+          "name": "Kim Altintop",
+          "email": "kim@eagain.io"
+        },
+        "time": "2023-01-09T09:23:51+01:00",
+        "patch": {
+          "id": "502b3c4dcf709c9b16df2b58aece9a8966405347a2bf6ccbb305711120984951",
+          "tips": [
+            "refs/it/bundles/502b3c4dcf709c9b16df2b58aece9a8966405347a2bf6ccbb305711120984951/heads/main"
+          ]
+        }
+      },
+      "message": {
+        "_type": "eagain.io/it/notes/basic",
+        "message": "Just testin"
+      }
+    }
+
+
+Notice the `patch.tips` array? If the patch contains references which are
+conventionally recognised as source code changes (i.e. `refs/heads/...`,
+`refs/tags/...`), their physical location inside the drop's repository will be
+shown here. _it_ is currently lacking a nice UI for this, but you can just do
+
+    git diff refs/it/bundles/502b3c4dcf709c9b16df2b58aece9a8966405347a2bf6ccbb305711120984951/heads/main
+
+to see the diff against your currently checked-out branch. If you're satisfied,
+go ahead and merge this ref into your local `main` branch. Don't forget to thank
+yourself for the contribution by commenting on the topic!
+
+
+To wrap it up, you may be wondering how _it_ stored everything in your
+repository, and perhaps clean it up. Run
+
+    git for-each-ref refs/it
+
+to poke around the references _it_ uses to maintain its state. Note, however,
+that this structure is not part of any public API, and may change without
+further notice!
+
+The actual xref:spec.adoc#_bundles[patch bundles] can be found in
+`.git/it/bundles`. Note that a patch bundle is self-contained -- you can send
+them over email, store them in IPFS, or whatever is convenient to move them from
+one place to another.
+
+
+== Remote drop
+
+We said that you could receive patches over whatever channel, and apply them to
+your local drop. A more tangible way is to serve the drop over HTTP, allowing
+anyone to submit patches to it. While it's possible to do this from your working
+repository, it is preferable to create a dedicated repo for the drop:
+
+    it drop init --git-dir /the/drop.git --description "my public drop"
+    it merge-point record --git-dir /the/drop.git --source-dir .
+    cd /the/drop.git
+    RUST_LOG=debug it serve
+
+In a second terminal, cd into your working repo and add the drop as a regular
+git remote:
+
+    git remote add dropit /the/drop.git
+    git remote update dropit
+
+You can now submit to it by replacing `record` with `submit` for the respective
+commands, and specifying `--drop dropit/patches` to use the remote drop as the
+reference.
+
+Currently, an extra command `it drop bundles sync` is needed to receive the
+patch bundles after updating the remote. This is not particularly smart yet,
+especially given that we do support inspecting individual topics (as
+opposed to the entire drop history) by `it topic unbundle`. We'll get there.
+
+
+== Loose ends
+
+If you've used email to send around patches, or even the excellent
+https://git.kernel.org/pub/scm/utils/b4/b4.git[b4] tool, this may all seem
+vaguely familiar to you: instead of `mbox` archives we have binary git bundles,
+what gives?
+
+That's fair, we haven't really detailed how _it_ permits much richer
+interactions and datatypes, for lack of a UI. For brevity, we also haven't shown
+that patch bundles can be stored on IPFS, the "commit bit" can be extended to
+co-maintainers, or how more complex topologies can be created by drop
+aggregation (and without resorting to HTTP POST).
+
+We invite you to play around with the available commands, read the
+xref:spec.adoc[spec], and perhaps consider to contribute where you see _it_ is
+currently lacking :)
