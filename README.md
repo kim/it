@@ -9,15 +9,15 @@ peer-to-peer network topologies.
 
 ## Status
 
-The [spec](./Documentation/spec.adoc) is thought of as being stable, in the
-sense that any amendments will consider backwards compatibility.
+_it_ is **experimental** software. Do not for anything serious.
+
+That said, the [spec](./Documentation/spec.adoc) is thought of as being fairly
+stable, in the sense that any amendments will consider backwards compatibility.
 
 The source code in this repository has been developed exploratively, in order to
 validate and refine the ideas laid out in above document. As such, it is
 incomplete, may occasionally malfunction, and does not yet provide the fine bone
 porcelain rendering it usable in anger. It's a prototype, if you wish.
-
-_it_ is actively developed on a volunteer basis.
 
 
 ## Usage
