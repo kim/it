@@ -16,7 +16,7 @@ Kim Altintop <kim@eagain.io>
 :toclevels: 3
 :xrefstyle: short
 // custom attributes
-:fmt-version-id: 0.2.0
+:fmt-version-id: 1.0.0
 :fmt-version-drop: 0.2.0
 :fmt-version-mirrors: 0.2.0
 :fmt-version-alternates: 0.2.0
@@ -308,7 +308,12 @@ The `*signed*` portion of the `id.json` file is defined as follows:
         <<KEY>>,
         ...
     ],
-    "threshold": <<THRESHOLD>>,
+    "roles": {
+        "root": {
+            "keys": [<<KEYID>>],
+            "threshold": <<THRESHOLD>>
+        }
+    },
     "mirrors": [
         <<URL>>,
         ...
@@ -348,14 +353,17 @@ Verification of an identity history proceeds as follows:
       <<DATETIME>> does not lie in the past. Otherwise, abort and report an
       error.
 
-    . Verify that at least `*threshold*` of `*keys*` have provided valid
-      signatures
+    . Let `k` be the subset of `*keys*` which have a corresponding entry in the
+      `*roles.root.keys*` set. Verify that at least `*roles.root.threshold*` of
+      `k` have provided valid signatures
 
     . If `*prev*` is not `null`, load the corresponding previous revision of the
       metadata
 
-    . Verify that at least `*threshold*` of `*keys*` of the _previous_ revision
-      have provided valid signatures over the _current_ revision
+    . Let `k'` be the subset of `*keys*` of the _previous_ revision which have a
+      corresponding entry in the `*roles.root.keys*` set (also of the previous
+      revision). Verify that at least `*threshold*` of `k'` have provided valid
+      signatures over the _current_ revision
 
     . Repeat steps 4. and 5. until `*prev*` is `null`
 
