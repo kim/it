@@ -4,7 +4,7 @@
 = it: zero-g git
 Kim Altintop <kim@eagain.io>
 :revdate: 2022
-:revnumber: 0.1.0
+:revnumber: 0.2.0
 :revremark: draft
 :attribute-missing: warn
 :listing-caption: Figure
@@ -15,6 +15,11 @@ Kim Altintop <kim@eagain.io>
 :toc: preamble
 :toclevels: 3
 :xrefstyle: short
+// custom attributes
+:fmt-version-id: 0.2.0
+:fmt-version-drop: 0.2.0
+:fmt-version-mirrors: 0.2.0
+:fmt-version-alternates: 0.2.0
 
 _it_ aims to augment git with primitives to build integrated, cryptographically
 verifiable collaboration workflows around source code. It maintains the
@@ -227,10 +232,12 @@ H('blob ' || LEN(p) || NUL || p)
 [[OBJECT_ID]]OBJECT_ID::
     Hexadecimal git object id.
 
-[[SPEC_VERSION]]SPEC_VERSION::
-    Version of this specification in "`dotted triple`" format, currently
-    {revnumber}. The semantics loosely follows the <<semver,"Semantic
-    Versioning">> convention, but gives no significance to leading zeroes.
+[[FMT_VERSION]]FMT_VERSION::
+    Version of a datatype, in "`dotted triple`" format. The semantics loosely
+    follows the <<semver,"Semantic Versioning">> convention, but gives no
+    significance to leading zeroes. That is, a major version of 1.x does not
+    indicate that it is more stable than 0.x, but that it is not _forward
+    compatible_ with 0.x.
 
 [[URL]]URL::
     A URL as per the <<WHATWG-URL, WHATWG specification>>.
@@ -295,7 +302,7 @@ The `*signed*` portion of the `id.json` file is defined as follows:
 ----
 {
     "_type": "eagain.io/it/identity",
-    "spec_version": <<SPEC_VERSION>>,
+    "fmt_version": <<FMT_VERSION>>,
     "prev": <<CONTENT_HASH>> | null,
     "keys": [
         <<KEY>>,
@@ -326,6 +333,8 @@ ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDtt6XEdNVInhiKkX+ccN++Bk8kccdP6SeBPg0Aq8XFo
     An integer number of keys whose signatures are required in order to consider
     the identity metadata to be properly signed. Must be between 1 and the
     number of `*keys*` in the metadata file.
+
+The current <<FMT_VERSION>> of `id.json` is: *_{fmt-version-id}_*.
 
 [#id-verification]
 === Verification
@@ -651,7 +660,7 @@ The `*signed*` portion the `drop.json` metadata file is defined as follows:
 ----
 {
     "_type": "eagain.io/it/drop",
-    "spec_version": <<SPEC_VERSION>>,
+    "fmt_version": <<FMT_VERSION>>,
     "description": <<DESCRIPTION>>,
     "prev": <<CONTENT_HASH>> | null,
     "roles": {
@@ -733,6 +742,8 @@ Example:
 }
 ----
 
+The current <<FMT_VERSION>> of `drop.json` is: *_{fmt-version-drop}_*.
+
 [#mirrors-json]
 ==== `mirrors.json`
 
@@ -746,7 +757,7 @@ The `*signed*` portion of the `mirrors.json` file is defined as follows:
 ----
 {
     "_type": "eagain.io/it/mirrors",
-    "spec_version": <<SPEC_VERSION>>,
+    "fmt_version": <<FMT_VERSION>>,
     "mirrors": [
         <<MIRROR>>,
         ...
@@ -783,6 +794,7 @@ The `*signed*` portion of the `mirrors.json` file is defined as follows:
       peer-to-peer storage if (and only if) the <<record-json,record.json>>
       entries specify stable bundle URIs.
 
+The current <<FMT_VERSION>> of `mirrors.json` is: *_{fmt-version-mirrors}_*.
 
 [#alternates-json]
 ==== `alternates.json`
@@ -800,7 +812,7 @@ The `*signed*` portion of the `alternates.json` file is defined as follows:
 ----
 {
     "_type": "eagain.io/it/alternates",
-    "spec_version": <<SPEC_VERSION>>,
+    "fmt_version": <<FMT_VERSION>>,
     "alternates": [
         <<URL>>,
         ...
@@ -809,6 +821,9 @@ The `*signed*` portion of the `alternates.json` file is defined as follows:
     "expires": <<DATETIME>> | null
 }
 ----
+
+The current <<FMT_VERSION>> of `alternates.json` is:
+*_{fmt-version-alternates}_*.
 
 [#drop-verification]
 === Verification
