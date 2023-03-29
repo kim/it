@@ -235,10 +235,10 @@ impl Identity {
     where
         F: FnMut(&ContentHash) -> io::Result<Signed<Self>>,
     {
-        use error::Verification::IncompatibleSpecVersion;
+        use error::Verification::IncompatibleVersion;
 
         if !FMT_VERSION.is_compatible(&self.fmt_version) {
-            return Err(IncompatibleSpecVersion);
+            return Err(IncompatibleVersion);
         }
 
         let canonical = self.canonicalise()?;

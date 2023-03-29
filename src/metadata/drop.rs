@@ -142,7 +142,7 @@ impl Drop {
         use error::Verification::*;
 
         if !FMT_VERSION.is_compatible(&self.fmt_version) {
-            return Err(IncompatibleSpecVersion);
+            return Err(IncompatibleVersion);
         }
 
         let canonical = self.canonicalise()?;
@@ -174,7 +174,7 @@ impl Drop {
             }
         }
         if !FMT_VERSION.is_compatible(&mirrors.signed.fmt_version) {
-            return Err(IncompatibleSpecVersion);
+            return Err(IncompatibleVersion);
         }
 
         let payload = Sha512::digest(mirrors.signed.canonicalise()?);
@@ -198,7 +198,7 @@ impl Drop {
             }
         }
         if !FMT_VERSION.is_compatible(&alt.signed.fmt_version) {
-            return Err(IncompatibleSpecVersion);
+            return Err(IncompatibleVersion);
         }
 
         let payload = Sha512::digest(alt.signed.canonicalise()?);

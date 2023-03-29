@@ -9,7 +9,7 @@ peer-to-peer network topologies.
 
 ## Status
 
-_it_ is **experimental** software. Do not for anything serious.
+_it_ is **experimental** software. Do not use for anything serious.
 
 That said, the [spec](./Documentation/spec.adoc) is thought of as being fairly
 stable, in the sense that any amendments will consider backwards compatibility.

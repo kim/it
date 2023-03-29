@@ -20,8 +20,8 @@ pub enum SigId {
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum Verification {
-    #[error("incompatible spec version")]
-    IncompatibleSpecVersion,
+    #[error("incompatible format version")]
+    IncompatibleVersion,
 
     #[error("canonicalisation failed")]
     Canonicalise(#[from] Canonicalise),
