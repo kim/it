@@ -56,7 +56,7 @@ use crate::{
     metadata::git::find_parent,
 };
 
-pub const FMT_VERSION: FmtVersion = FmtVersion(super::FmtVersion::new(0, 2, 0));
+pub const FMT_VERSION: FmtVersion = FmtVersion(super::FmtVersion::new(1, 0, 0));
 
 #[derive(Clone, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize)]
 pub struct FmtVersion(super::FmtVersion);
@@ -154,13 +154,42 @@ impl AsRef<Identity> for Verified {
     }
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Roles {
+    /// Legacy
+    Threshold(NonZeroUsize),
+    Roles {
+        root: Role,
+    },
+}
+
+impl Roles {
+    pub fn root(keys: BTreeSet<KeyId>, threshold: NonZeroUsize) -> Self {
+        Self::Roles {
+            root: Role { keys, threshold },
+        }
+    }
+
+    pub fn is_threshold(&self) -> bool {
+        matches!(self, Self::Threshold(_))
+    }
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct Role {
+    pub keys: BTreeSet<KeyId>,
+    pub threshold: NonZeroUsize,
+}
+
 #[derive(Clone, serde::Deserialize)]
 pub struct Identity {
     #[serde(alias = "spec_version")]
     pub fmt_version: FmtVersion,
     pub prev: Option<ContentHash>,
     pub keys: KeySet<'static>,
-    pub threshold: NonZeroUsize,
+    #[serde(flatten)]
+    pub roles: Roles,
     pub mirrors: BTreeSet<Url>,
     pub expires: Option<DateTime>,
     #[serde(default)]
@@ -214,20 +243,48 @@ impl Identity {
 
         let canonical = self.canonicalise()?;
         let signed = Sha512::digest(&canonical);
-        verify_signatures(&signed, self.threshold, signatures.iter(), &self.keys)?;
+        self.verify_signatures(signatures.iter(), &signed)?;
         if let Some(prev) = self.prev.as_ref().map(&mut find_prev).transpose()? {
-            verify_signatures(
-                &signed,
-                prev.signed.threshold,
-                signatures.iter(),
-                &prev.signed.keys,
-            )?;
+            prev.signed.verify_signatures(signatures.iter(), &signed)?;
             return prev
                 .signed
                 .verify_tail(Cow::Owned(prev.signatures), find_prev);
         }
 
         Ok(IdentityId(Sha256::digest(canonical).into()))
+    }
+
+    fn verify_signatures<'a, I>(
+        &self,
+        signatures: I,
+        payload: &[u8],
+    ) -> Result<(), error::Verification>
+    where
+        I: IntoIterator<Item = (&'a KeyId, &'a Signature)>,
+    {
+        match &self.roles {
+            Roles::Threshold(threshold) => {
+                verify_signatures(payload, *threshold, signatures, &self.keys)?;
+            },
+            Roles::Roles {
+                root: Role { keys, threshold },
+            } => {
+                let root_keys = self
+                    .keys
+                    .iter()
+                    .filter_map(|(id, key)| {
+                        if keys.contains(id) {
+                            Some((id.clone(), key.clone()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                verify_signatures(payload, *threshold, signatures, &root_keys)?;
+            },
+        }
+
+        Ok(())
     }
 
     pub fn canonicalise(&self) -> Result<Vec<u8>, canonical::error::Canonicalise> {
@@ -286,19 +343,32 @@ impl serde::Serialize for Identity {
     {
         use serde::ser::SerializeStruct;
 
+        const HAVE_FMT_VERSION: FmtVersion = FmtVersion(super::FmtVersion::new(0, 2, 0));
+
         let mut s = serializer.serialize_struct("Identity", 7)?;
-        let version_field = if self.fmt_version < FMT_VERSION {
+        let version_field = if self.fmt_version < HAVE_FMT_VERSION {
             "spec_version"
         } else {
             "fmt_version"
         };
+
         s.serialize_field(version_field, &self.fmt_version)?;
         s.serialize_field("prev", &self.prev)?;
         s.serialize_field("keys", &self.keys)?;
-        s.serialize_field("threshold", &self.threshold)?;
+        match &self.roles {
+            Roles::Threshold(t) => s.serialize_field("threshold", t)?,
+            Roles::Roles { root } => {
+                #[derive(serde::Serialize)]
+                struct Roles<'a> {
+                    root: &'a Role,
+                }
+                s.serialize_field("roles", &Roles { root })?
+            },
+        }
         s.serialize_field("mirrors", &self.mirrors)?;
         s.serialize_field("expires", &self.expires)?;
         s.serialize_field("custom", &self.custom)?;
+
         s.end()
     }
 }

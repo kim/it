@@ -145,13 +145,14 @@ pub fn init(args: Init) -> cmd::Result<Output> {
         .map(metadata::Key::from)
         .chain(args.public)
         .collect::<KeySet>();
+    let roles = metadata::identity::Roles::root(keys.keys().cloned().collect(), threshold);
 
     let meta = {
         let id = metadata::Identity {
             fmt_version: Default::default(),
             prev: None,
             keys,
-            threshold,
+            roles,
             mirrors: args.mirrors.into_iter().collect(),
             expires: args.expires,
             custom,

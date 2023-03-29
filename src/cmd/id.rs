@@ -3,7 +3,6 @@
 
 use std::{
     collections::BTreeSet,
-    num::NonZeroUsize,
     path::PathBuf,
 };
 
@@ -134,7 +133,8 @@ pub fn identity_ref(id: Either<&IdentityId, &git2::Config>) -> cmd::Result<Refna
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Editable {
     keys: metadata::KeySet<'static>,
-    threshold: NonZeroUsize,
+    #[serde(flatten)]
+    roles: metadata::identity::Roles,
     mirrors: BTreeSet<Url>,
     expires: Option<metadata::DateTime>,
     custom: metadata::Custom,
@@ -144,7 +144,7 @@ impl From<metadata::Identity> for Editable {
     fn from(
         metadata::Identity {
             keys,
-            threshold,
+            roles,
             mirrors,
             expires,
             custom,
@@ -153,7 +153,7 @@ impl From<metadata::Identity> for Editable {
     ) -> Self {
         Self {
             keys,
-            threshold,
+            roles,
             mirrors,
             expires,
             custom,
@@ -167,19 +167,23 @@ impl TryFrom<Editable> for metadata::Identity {
     fn try_from(
         Editable {
             keys,
-            threshold,
+            roles,
             mirrors,
             expires,
             custom,
         }: Editable,
     ) -> Result<Self, Self::Error> {
         ensure!(!keys.is_empty(), "keys cannot be empty");
+        ensure!(
+            !roles.is_threshold(),
+            "flat threshold is deprecated, please specify the root keys explicity"
+        );
 
         Ok(Self {
             fmt_version: Default::default(),
             prev: None,
             keys,
-            threshold,
+            roles,
             mirrors,
             expires,
             custom,
