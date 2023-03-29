@@ -121,7 +121,7 @@ pub fn init(args: Init) -> cmd::Result<Output> {
         let default_branch = cfg::git::default_branch(&cfg)?;
 
         metadata::Drop {
-            spec_version: crate::SPEC_VERSION,
+            fmt_version: Default::default(),
             description: args.description,
             prev: None,
             custom: Default::default(),

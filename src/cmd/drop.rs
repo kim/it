@@ -195,7 +195,7 @@ impl TryFrom<Editable> for metadata::Drop {
         }
 
         Ok(Self {
-            spec_version: crate::SPEC_VERSION,
+            fmt_version: Default::default(),
             description,
             prev: None,
             roles,

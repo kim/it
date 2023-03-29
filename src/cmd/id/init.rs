@@ -148,7 +148,7 @@ pub fn init(args: Init) -> cmd::Result<Output> {
 
     let meta = {
         let id = metadata::Identity {
-            spec_version: crate::SPEC_VERSION,
+            fmt_version: Default::default(),
             prev: None,
             keys,
             threshold,

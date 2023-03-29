@@ -11,6 +11,7 @@ use std::{
     io,
     marker::PhantomData,
     num::NonZeroUsize,
+    ops::Deref,
     path::PathBuf,
     str::FromStr,
 };
@@ -46,7 +47,6 @@ use super::{
     Metadata,
     Signature,
     Signed,
-    SpecVersion,
 };
 use crate::{
     json::{
@@ -55,6 +55,25 @@ use crate::{
     },
     metadata::git::find_parent,
 };
+
+pub const FMT_VERSION: FmtVersion = FmtVersion(super::FmtVersion::new(0, 2, 0));
+
+#[derive(Clone, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize)]
+pub struct FmtVersion(super::FmtVersion);
+
+impl Deref for FmtVersion {
+    type Target = super::FmtVersion;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Default for FmtVersion {
+    fn default() -> Self {
+        FMT_VERSION
+    }
+}
 
 #[derive(
     Clone, Copy, Eq, Ord, PartialEq, PartialOrd, Hash, serde::Serialize, serde::Deserialize,
@@ -135,9 +154,10 @@ impl AsRef<Identity> for Verified {
     }
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Deserialize)]
 pub struct Identity {
-    pub spec_version: SpecVersion,
+    #[serde(alias = "spec_version")]
+    pub fmt_version: FmtVersion,
     pub prev: Option<ContentHash>,
     pub keys: KeySet<'static>,
     pub threshold: NonZeroUsize,
@@ -188,7 +208,7 @@ impl Identity {
     {
         use error::Verification::IncompatibleSpecVersion;
 
-        if !crate::SPEC_VERSION.is_compatible(&self.spec_version) {
+        if !FMT_VERSION.is_compatible(&self.fmt_version) {
             return Err(IncompatibleSpecVersion);
         }
 
@@ -256,6 +276,30 @@ impl From<Identity> for Cow<'static, Identity> {
 impl<'a> From<&'a Identity> for Cow<'a, Identity> {
     fn from(s: &'a Identity) -> Self {
         Self::Borrowed(s)
+    }
+}
+
+impl serde::Serialize for Identity {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+
+        let mut s = serializer.serialize_struct("Identity", 7)?;
+        let version_field = if self.fmt_version < FMT_VERSION {
+            "spec_version"
+        } else {
+            "fmt_version"
+        };
+        s.serialize_field(version_field, &self.fmt_version)?;
+        s.serialize_field("prev", &self.prev)?;
+        s.serialize_field("keys", &self.keys)?;
+        s.serialize_field("threshold", &self.threshold)?;
+        s.serialize_field("mirrors", &self.mirrors)?;
+        s.serialize_field("expires", &self.expires)?;
+        s.serialize_field("custom", &self.custom)?;
+        s.end()
     }
 }
 

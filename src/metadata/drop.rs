@@ -10,6 +10,7 @@ use std::{
     },
     io,
     num::NonZeroUsize,
+    ops::Deref,
 };
 
 use log::warn;
@@ -32,13 +33,31 @@ use super::{
     Mirrors,
     Signature,
     Signed,
-    SpecVersion,
 };
 use crate::{
     git::Refname,
     json::canonical,
     str::Varchar,
 };
+
+pub const FMT_VERSION: FmtVersion = FmtVersion(super::FmtVersion::new(0, 2, 0));
+
+#[derive(Clone, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize)]
+pub struct FmtVersion(super::FmtVersion);
+
+impl Deref for FmtVersion {
+    type Target = super::FmtVersion;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Default for FmtVersion {
+    fn default() -> Self {
+        FMT_VERSION
+    }
+}
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Roles {
@@ -83,9 +102,10 @@ pub struct Annotated {
 
 pub type Verified = super::Verified<Drop>;
 
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Deserialize)]
 pub struct Drop {
-    pub spec_version: SpecVersion,
+    #[serde(alias = "spec_version")]
+    pub fmt_version: FmtVersion,
     #[serde(default = "Description::new")]
     pub description: Description,
     pub prev: Option<ContentHash>,
@@ -121,7 +141,7 @@ impl Drop {
     {
         use error::Verification::*;
 
-        if !crate::SPEC_VERSION.is_compatible(&self.spec_version) {
+        if !FMT_VERSION.is_compatible(&self.fmt_version) {
             return Err(IncompatibleSpecVersion);
         }
 
@@ -153,7 +173,7 @@ impl Drop {
                 return Err(Expired);
             }
         }
-        if !crate::SPEC_VERSION.is_compatible(&mirrors.signed.spec_version) {
+        if !FMT_VERSION.is_compatible(&mirrors.signed.fmt_version) {
             return Err(IncompatibleSpecVersion);
         }
 
@@ -177,7 +197,7 @@ impl Drop {
                 return Err(Expired);
             }
         }
-        if !crate::SPEC_VERSION.is_compatible(&alt.signed.spec_version) {
+        if !FMT_VERSION.is_compatible(&alt.signed.fmt_version) {
             return Err(IncompatibleSpecVersion);
         }
 
@@ -200,6 +220,28 @@ impl From<Drop> for Cow<'static, Drop> {
 impl<'a> From<&'a Drop> for Cow<'a, Drop> {
     fn from(d: &'a Drop) -> Self {
         Self::Borrowed(d)
+    }
+}
+
+impl serde::Serialize for Drop {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+
+        let mut s = serializer.serialize_struct("Drop", 5)?;
+        let version_field = if self.fmt_version < FMT_VERSION {
+            "spec_version"
+        } else {
+            "fmt_version"
+        };
+        s.serialize_field(version_field, &self.fmt_version)?;
+        s.serialize_field("description", &self.description)?;
+        s.serialize_field("prev", &self.prev)?;
+        s.serialize_field("roles", &self.roles)?;
+        s.serialize_field("custom", &self.custom)?;
+        s.end()
     }
 }
 

@@ -16,8 +16,6 @@ mod serde;
 mod ssh;
 mod str;
 
-pub const SPEC_VERSION: metadata::SpecVersion = metadata::SpecVersion::current();
-
 pub mod cmd;
 pub use cmd::{
     ui::Output,

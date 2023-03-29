@@ -176,7 +176,7 @@ impl TryFrom<Editable> for metadata::Identity {
         ensure!(!keys.is_empty(), "keys cannot be empty");
 
         Ok(Self {
-            spec_version: crate::SPEC_VERSION,
+            fmt_version: Default::default(),
             prev: None,
             keys,
             threshold,

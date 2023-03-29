@@ -56,13 +56,9 @@ pub use identity::{
 };
 
 #[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
-pub struct SpecVersion(SemVer);
+pub struct FmtVersion(SemVer);
 
-impl SpecVersion {
-    pub const fn current() -> Self {
-        Self::new(0, 1, 0)
-    }
-
+impl FmtVersion {
     const fn new(major: u32, minor: u32, patch: u32) -> Self {
         Self(SemVer {
             major,
@@ -92,19 +88,13 @@ impl SpecVersion {
     }
 }
 
-impl Default for SpecVersion {
-    fn default() -> Self {
-        Self::current()
-    }
-}
-
-impl fmt::Display for SpecVersion {
+impl fmt::Display for FmtVersion {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.0.fmt(f)
     }
 }
 
-impl FromStr for SpecVersion {
+impl FromStr for FmtVersion {
     type Err = <SemVer as FromStr>::Err;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -112,7 +102,7 @@ impl FromStr for SpecVersion {
     }
 }
 
-impl<'a> TryFrom<&'a str> for SpecVersion {
+impl<'a> TryFrom<&'a str> for FmtVersion {
     type Error = <SemVer as TryFrom<&'a str>>::Error;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
@@ -120,13 +110,13 @@ impl<'a> TryFrom<&'a str> for SpecVersion {
     }
 }
 
-impl AsRef<SemVer> for SpecVersion {
+impl AsRef<SemVer> for FmtVersion {
     fn as_ref(&self) -> &SemVer {
         &self.0
     }
 }
 
-impl serde::Serialize for SpecVersion {
+impl serde::Serialize for FmtVersion {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -135,7 +125,7 @@ impl serde::Serialize for SpecVersion {
     }
 }
 
-impl<'de> serde::Deserialize<'de> for SpecVersion {
+impl<'de> serde::Deserialize<'de> for FmtVersion {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
