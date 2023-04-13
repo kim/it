@@ -1,10 +1,7 @@
 // Copyright © 2022 Kim Altintop <kim@eagain.io>
 // SPDX-License-Identifier: GPL-2.0-only WITH openvpn-openssl-exception
 
-use sha2::{
-    digest::generic_array::GenericArray,
-    Digest,
-};
+use digest::Digest;
 
 /// Created by [`Lines::until_blank`], stops iteration at the first blank line.
 pub struct UntilBlank<B> {
@@ -94,8 +91,8 @@ impl<D, W> HashWriter<D, W>
 where
     D: Digest,
 {
-    pub fn hash(self) -> GenericArray<u8, D::OutputSize> {
-        self.hasher.finalize()
+    pub fn hasher(&self) -> &D {
+        &self.hasher
     }
 }
 

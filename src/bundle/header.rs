@@ -12,15 +12,13 @@ use std::{
     str::FromStr,
 };
 
+use digest::Digest;
 use hex::{
     FromHex,
     FromHexError,
 };
 use refs::Refname;
-use sha2::{
-    Digest,
-    Sha256,
-};
+use sha2::Sha256;
 
 use super::error;
 use crate::{

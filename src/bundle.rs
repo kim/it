@@ -1,13 +1,16 @@
 // Copyright © 2022 Kim Altintop <kim@eagain.io>
 // SPDX-License-Identifier: GPL-2.0-only WITH openvpn-openssl-exception
 
-use std::io;
+use std::{
+    fmt::{
+        self,
+        Debug,
+        Display,
+    },
+    io,
+};
 
 use log::info;
-use sha2::{
-    Digest,
-    Sha256,
-};
 use url::Url;
 
 use crate::io::{
@@ -42,12 +45,35 @@ pub use list::{
 pub const FILE_EXTENSION: &str = "bundle";
 pub const DOT_FILE_EXTENSION: &str = ".bundle";
 
+#[derive(Clone, Copy, Eq, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Checksum(#[serde(with = "crate::serde::display")] blake3::Hash);
+
+impl Debug for Checksum {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let hex = self.0.to_hex();
+        let hex: &str = hex.as_str();
+
+        f.debug_tuple("Checksum").field(&hex).finish()
+    }
+}
+
+impl Display for Checksum {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
+
+impl From<&blake3::Hasher> for Checksum {
+    fn from(hasher: &blake3::Hasher) -> Self {
+        Self(hasher.finalize())
+    }
+}
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Info {
     pub len: u64,
     pub hash: Hash,
-    #[serde(with = "hex::serde")]
-    pub checksum: [u8; 32],
+    pub checksum: Checksum,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub uris: Vec<Url>,
 }
@@ -56,7 +82,7 @@ pub struct Info {
 pub struct Expect<'a> {
     pub len: u64,
     pub hash: &'a Hash,
-    pub checksum: Option<&'a [u8]>,
+    pub checksum: Option<&'a Checksum>,
 }
 
 impl<'a> From<&'a Info> for Expect<'a> {
@@ -80,7 +106,7 @@ pub fn create<W>(mut out: W, repo: &git2::Repository, header: &Header) -> crate:
 where
     W: io::Write,
 {
-    let mut hasher = HashWriter::new(Sha256::new(), &mut out);
+    let mut hasher = HashWriter::new(blake3::Hasher::new(), &mut out);
     let mut writer = LenWriter::new(&mut hasher);
     let mut pack = {
         let mut pack = repo.packbuilder()?;
@@ -101,7 +127,7 @@ where
 
     let len = writer.bytes_written();
     let hash = header.hash();
-    let checksum = hasher.hash().into();
+    let checksum = Checksum::from(hasher.hasher());
 
     info!("Created patch bundle {hash}");
 

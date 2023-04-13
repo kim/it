@@ -15,11 +15,9 @@ use std::{
     ops::DerefMut,
 };
 
+use digest::Digest;
 use serde::ser::SerializeSeq;
-use sha2::{
-    Digest,
-    Sha512,
-};
+use sha2::Sha512;
 use time::{
     Duration,
     OffsetDateTime,

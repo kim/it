@@ -21,11 +21,9 @@ use anyhow::{
     ensure,
     Context,
 };
+use digest::Digest;
 use multipart::client::lazy::Multipart;
-use sha2::{
-    Digest,
-    Sha256,
-};
+use sha2::Sha256;
 use tempfile::NamedTempFile;
 use url::Url;
 
@@ -105,14 +103,14 @@ impl Bundle {
         let encryption = pack.encryption()?;
         drop(pack);
         let mut file = File::open(&path)?;
-        let mut sha2 = Sha256::new();
+        let mut hasher = blake3::Hasher::new();
 
-        let len = io::copy(&mut file, &mut sha2)?;
+        let len = io::copy(&mut file, &mut hasher)?;
         let hash = header.hash();
         ensure!(expect.hash == &hash, "header hash mismatch");
-        let checksum = sha2.finalize().into();
+        let checksum = bundle::Checksum::from(&hasher);
         if let Some(expect) = expect.checksum {
-            ensure!(expect == checksum, "claimed and actual hash differ");
+            ensure!(expect == &checksum, "claimed and actual hash differ");
         }
 
         let info = bundle::Info {
@@ -138,10 +136,10 @@ impl Bundle {
     {
         std::fs::create_dir_all(&to)?;
         let mut tmp = NamedTempFile::new_in(&to)?;
-        let mut out = HashWriter::new(Sha256::new(), &mut tmp);
+        let mut out = HashWriter::new(blake3::Hasher::new(), &mut tmp);
 
         let len = io::copy(&mut from, &mut out)?;
-        let checksum = out.hash().into();
+        let checksum = bundle::Checksum::from(out.hasher());
 
         let (header, mut pack) = split(tmp.path())?;
         let hash = header.hash();

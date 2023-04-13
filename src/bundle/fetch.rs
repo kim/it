@@ -22,10 +22,6 @@ use either::Either::{
     Left,
     Right,
 };
-use sha2::{
-    Digest,
-    Sha256,
-};
 use tempfile::NamedTempFile;
 use url::Url;
 
@@ -96,13 +92,13 @@ impl Fetcher {
                 LockedFile::atomic(&path, true, LockedFile::DEFAULT_PERMISSIONS)?
             };
 
-            let mut out = HashWriter::new(Sha256::new(), &mut lck);
+            let mut out = HashWriter::new(blake3::Hasher::new(), &mut lck);
             out.write_all(&buf)?;
 
             let len = buf.len() as u64 + io::copy(&mut body.take(expect.len), &mut out)?;
-            let checksum = out.hash().into();
+            let checksum = bundle::Checksum::from(out.hasher());
             if let Some(chk) = expect.checksum {
-                ensure!(chk == checksum, "checksum mismatch");
+                ensure!(chk == &checksum, "checksum mismatch");
             }
             lck.seek(SeekFrom::Start(0))?;
             let header = Header::from_reader(&mut lck)?;

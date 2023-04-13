@@ -13,11 +13,9 @@ use std::{
     ops::Deref,
 };
 
+use digest::Digest;
 use log::warn;
-use sha2::{
-    Digest,
-    Sha512,
-};
+use sha2::Sha512;
 use signature::Verifier;
 
 use super::{

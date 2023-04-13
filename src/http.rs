@@ -15,15 +15,13 @@ use std::{
     },
 };
 
+use digest::Digest;
 use log::{
     debug,
     error,
 };
 use once_cell::sync::Lazy;
-use sha2::{
-    Digest,
-    Sha256,
-};
+use sha2::Sha256;
 use threadpool::ThreadPool;
 use tiny_http::{
     Header,

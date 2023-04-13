@@ -11,11 +11,9 @@ use anyhow::{
     bail,
     ensure,
 };
+use digest::Digest;
 use either::Either::Left;
-use sha2::{
-    Digest,
-    Sha256,
-};
+use sha2::Sha256;
 
 use crate::{
     bundle,

@@ -19,11 +19,9 @@ use std::{
 };
 
 use anyhow::anyhow;
+use digest::Digest;
 use once_cell::sync::Lazy;
-use sha2::{
-    Digest,
-    Sha256,
-};
+use sha2::Sha256;
 use url::Url;
 
 use crate::git::{

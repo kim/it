@@ -15,16 +15,14 @@ use anyhow::{
     bail,
 };
 
+use digest::{
+    generic_array::GenericArray,
+    typenum::U32,
+    Digest,
+};
 use hex::FromHex;
 use once_cell::sync::Lazy;
-use sha2::{
-    digest::{
-        generic_array::GenericArray,
-        typenum::U32,
-    },
-    Digest,
-    Sha256,
-};
+use sha2::Sha256;
 
 use crate::{
     git::Refname,

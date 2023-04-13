@@ -11,11 +11,9 @@ use anyhow::{
     ensure,
     Context,
 };
+use digest::Digest;
 use once_cell::sync::Lazy;
-use sha2::{
-    Digest,
-    Sha256,
-};
+use sha2::Sha256;
 
 mod commit;
 pub use commit::{

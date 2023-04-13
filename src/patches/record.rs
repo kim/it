@@ -25,16 +25,12 @@ use anyhow::{
     ensure,
     Context,
 };
-
+use digest::Digest;
 use hex::{
     FromHex,
     ToHex,
 };
-
-use sha2::{
-    Digest,
-    Sha256,
-};
+use sha2::Sha256;
 use signature::{
     Signature as _,
     Verifier,
