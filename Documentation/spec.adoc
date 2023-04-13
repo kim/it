@@ -54,6 +54,13 @@ Normally, identities must be resolvable within the same tree as the drop \
 metadata. However, resolution may be substituted if e.g. the client believes \
 to have more up-to-date identity data elsewhere. \
 ]
+:fn-blake3: footnote:blake3[ \
+BLAKE3 is a tree hash which remains stable in verified streaming mode (Bao), \
+even with variable chunk sizes. This means that it is a good choice for \
+long-term content addressability, in particular in location-independent \
+storage. We don't use BLAKE3 elsewhere, however, in order to maximise \
+compatibility with git. \
+]
 //
 
 
@@ -1011,7 +1018,7 @@ are:
     bundles, i.e. both the prerequisites and reference heads.
 
 [[BUNDLE_CHECKSUM]]BUNDLE_CHECKSUM::
-    SHA-256 hash over the bundle file as received.
+    BLAKE3 hash over the bundle file as received{fn-blake3}.
 
 [[BUNDLE_SIGNATURE]]BUNDLE_SIGNATURE::
     Signature over the <<BUNDLE_HEADS>>, in hexadecimal.
