@@ -4,7 +4,7 @@
 = it: zero-g git
 Kim Altintop <kim@eagain.io>
 :revdate: 2022
-:revnumber: 0.2.0
+:revnumber: 0.3.0
 :revremark: draft
 :attribute-missing: warn
 :listing-caption: Figure
