@@ -8,8 +8,8 @@ use std::ops::ControlFlow;
 /// It is a common pattern that instantiating an effectful iterator is fallible,
 /// while traversing it is fallible, too. This yields unwieldy signatures like:
 ///
-/// ```no_run
-/// fn my_iterator() -> Result<impl Iterator<Item = Result<T, F>>, E>
+/// ```ignore
+/// fn my_iterator<T, E, F>() -> Result<impl Iterator<Item = Result<T, F>>, E>
 /// ```
 ///
 /// Often, however, we can unify the error types (`E` and `F` above), which
@@ -17,8 +17,8 @@ use std::ops::ControlFlow;
 /// infallible, but an initialiser error is returned upon the first call to
 /// `next()`. Ie.:
 ///
-/// ```no_run
-/// fn my_iterator() -> impl Iterator<Item = Result<T, E>>
+/// ```ignore
+/// fn my_iterator<T, E>() -> impl Iterator<Item = Result<T, E>>
 /// ```
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct Iter<E, F, I, G> {
