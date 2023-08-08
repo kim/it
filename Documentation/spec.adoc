@@ -402,9 +402,9 @@ apart from causal ordering, is defined by its contents, which makes the format
 amenable for future extensions.
 
 In that sense, _it_ aspirationally uses the term "`patch`" in the generalised
-way described by theoretical work such as <<Darcs>>, <<CaPT>>, and <<HoPT>>.
-When describing the more mundane processing procedures, the term "`patch
-bundle`" is also used, alluding to the container format.
+way described by theoretical work such as <<Darcs>>, <<Pijul>>, <<CaPT>>, and
+<<HoPT>>. When describing the more mundane processing procedures, the term
+"`patch bundle`" is also used, alluding to the container format.
 
 === Bundles
 
@@ -1387,6 +1387,7 @@ source code are licensed under either the <<Apache-2,Apache License 2.0>> or the
 
 // Patch Theory
 * [[[Darcs]]]: https://en.wikibooks.org/wiki/Understanding_Darcs/Patch_theory
+* [[[Pijul]]]: https://pijul.org/manual/theory.html
 * [[[CaPT]]]: https://arxiv.org/abs/1311.3903
 * [[[HoPT]]]: https://www.cambridge.org/core/journals/journal-of-functional-programming/article/homotopical-patch-theory/42AD8BB8A91688BCAC16FD4D6A2C3FE7
 
